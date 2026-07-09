@@ -1,4 +1,92 @@
 import type { AssetType, Finding, ReviewSubmission, RiskLevel } from "./types";
+import { ADVISORPILOT_KNOWLEDGE } from "./knowledge/advisorpilot";
+
+const RIA_CLAIM_PATTERNS = [
+  {
+    pattern: /\b(guaranteed returns?|guarantee[ds]? (?:\d+%|profit|income|return))\b/gi,
+    category: "RIA Performance",
+    title: "Performance guarantee detected",
+    summary: "This material may promise guaranteed investment returns.",
+    detail:
+      "SEC and FINRA prohibit advertisements that guarantee specific investment outcomes. Performance claims require substantiation, balanced disclosure, and cannot promise future results.",
+    regulation: "SEC Marketing Rule 206(4)-1 · FINRA Rule 2210",
+    recommendation:
+      "Remove guarantee language. Reframe as workflow benefits without promising investment outcomes.",
+    baseRisk: "action-required" as RiskLevel,
+  },
+  {
+    pattern: /\b(beat the market|outperform(?:s|ing)? the (?:market|S&P)|always outperforms?)\b/gi,
+    category: "RIA Performance",
+    title: "Market outperformance claim detected",
+    summary: "This material implies the service or strategy beats market benchmarks.",
+    detail:
+      "Implied or explicit outperformance claims require rigorous substantiation under SEC Marketing Rule and may constitute a performance advertisement requiring specific disclosures.",
+    regulation: "SEC Marketing Rule 206(4)-1 · FINRA Rule 2210",
+    recommendation:
+      "Remove outperformance language. Focus on operational workflow benefits instead of investment results.",
+    baseRisk: "action-required" as RiskLevel,
+  },
+  {
+    pattern: /\b(\d+%\s*(?:annual|yearly|return|gain|growth)|double your money)\b/gi,
+    category: "RIA Performance",
+    title: "Specific return figure detected",
+    summary: "This material references a specific percentage return or wealth multiplier.",
+    detail:
+      "Specific return figures in advertisements trigger performance advertising requirements including net vs. gross returns, time periods, and equal prominence of disclosures.",
+    regulation: "SEC Marketing Rule 206(4)-1",
+    recommendation:
+      "Remove specific return figures. If performance data is essential, consult legal for compliant formatting.",
+    baseRisk: "action-required" as RiskLevel,
+  },
+  {
+    pattern: /\b(client said|clients? (?:say|said|told us)|testimonial|endorsement|review from)\b/gi,
+    category: "RIA Testimonials",
+    title: "Possible testimonial or endorsement detected",
+    summary: "This material may contain a client testimonial or endorsement.",
+    detail:
+      "Under SEC Marketing Rule 206(4)-1, testimonials and endorsements require specific disclosures including whether the person is a client, compensation details, and conflicts of interest.",
+    regulation: "SEC Marketing Rule 206(4)-1 · Rule 206(4)-1(a)(1)",
+    recommendation:
+      "Add required testimonial disclosures or remove client quotes. Consult legal for compliant testimonial format.",
+    baseRisk: "caution" as RiskLevel,
+  },
+  {
+    pattern: /\b(we recommend (?:you )?buy|guaranteed suitability|invest in|you should (?:buy|sell|invest))\b/gi,
+    category: "RIA Implied Advice",
+    title: "Implied investment advice detected",
+    summary: "This material may constitute investment advice or a recommendation.",
+    detail:
+      "Software marketing for RIAs must not cross into providing investment advice. Language suggesting specific investment actions may trigger advisory registration and solicitation rules.",
+    regulation: "Investment Advisers Act · SEC Marketing Rule",
+    recommendation:
+      "Reframe as workflow preparation tool. Remove language suggesting specific investment actions.",
+    baseRisk: "action-required" as RiskLevel,
+  },
+  {
+    pattern: /\b(SEC[- ]?approved|FINRA[- ]?certified|SEC[- ]?registered software|government[- ]?approved)\b/gi,
+    category: "RIA Regulatory Overreach",
+    title: "False regulatory authority claim detected",
+    summary: "This material may falsely imply SEC or FINRA endorsement of the product.",
+    detail:
+      "No software product receives SEC or FINRA 'approval' or 'certification' for marketing purposes. Such claims are misleading and may violate antifraud provisions.",
+    regulation: "SEC Antifraud Provisions · FTC Act §5",
+    recommendation:
+      "Remove SEC/FINRA approval language. State factual compliance posture without implying regulatory endorsement.",
+    baseRisk: "action-required" as RiskLevel,
+  },
+  {
+    pattern: /\b(replaces? your judgment|automated advice|AI (?:gives?|provides?) advice|let AI (?:decide|invest|advise))\b/gi,
+    category: "AI Overclaim",
+    title: "AI advice overclaim detected",
+    summary: "This material may overstate AI capabilities as substituting for advisor judgment.",
+    detail:
+      "AdvisorPilot positions AI as operational workflow assistance, not investment advice. Claims that AI replaces fiduciary judgment create regulatory and liability risk.",
+    regulation: "SEC Marketing Rule · Investment Advisers Act fiduciary duty",
+      recommendation:
+        "Reframe: 'AI assists workflow preparation, not investment advice.' Emphasize advisor retains judgment.",
+    baseRisk: "action-required" as RiskLevel,
+  },
+];
 
 const CLAIM_PATTERNS = [
   {
@@ -93,6 +181,10 @@ const ASSET_CHECKS: Record<
     { label: "Platform-native disclosure format used", passed: false, note: "Confirm #ad or Paid Partnership label is prominent" },
     { label: "Character limits do not truncate disclaimers", passed: true },
     { label: "Archived post matches approved version", passed: true },
+    { label: "Standard RIA disclaimer present on promotional material", passed: false, note: "Include 'not an offer, solicitation, or recommendation' language" },
+    { label: "No performance promises in social creative", passed: true },
+    { label: "AI assists workflow positioning maintained", passed: false, note: "Confirm copy states AI supports operations, not investment advice" },
+    { label: "Demo CTA does not imply guaranteed outcomes", passed: true },
   ],
   influencer: [
     { label: "Material connection disclosed clearly", passed: false, note: "Disclosure must appear before 'more' fold on most platforms" },
@@ -121,6 +213,46 @@ const ASSET_CHECKS: Record<
   ],
 };
 
+function evaluateChecklist(
+  assetType: AssetType,
+  text: string
+): { label: string; passed: boolean; note?: string }[] {
+  const base = ASSET_CHECKS[assetType] ?? ASSET_CHECKS.other;
+  const lower = text.toLowerCase();
+
+  if (assetType !== "social-campaign") return base;
+
+  return base.map((item) => {
+    if (item.label.includes("RIA disclaimer")) {
+      const passed =
+        lower.includes("not an offer") ||
+        lower.includes("not a solicitation") ||
+        lower.includes("not a recommendation");
+      return { ...item, passed, note: passed ? undefined : item.note };
+    }
+    if (item.label.includes("performance promises")) {
+      const hasPerformance = /\b(guaranteed|outperform|beat the market|\d+%\s*return)\b/i.test(text);
+      return { ...item, passed: !hasPerformance };
+    }
+    if (item.label.includes("AI assists workflow")) {
+      const passed =
+        lower.includes("workflow") ||
+        lower.includes("not investment advice") ||
+        lower.includes("not advice") ||
+        lower.includes("fiduciary");
+      return { ...item, passed, note: passed ? undefined : item.note };
+    }
+    if (item.label.includes("Demo CTA")) {
+      const hasBadCta = /\b(guaranteed|free money|double your)\b/i.test(text);
+      return { ...item, passed: !hasBadCta };
+    }
+    if (item.label.includes("disclosure format")) {
+      return { ...item, passed: true, note: undefined };
+    }
+    return item;
+  });
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -129,7 +261,9 @@ function analyzeText(text: string): Finding[] {
   const findings: Finding[] = [];
   let id = 0;
 
-  for (const rule of CLAIM_PATTERNS) {
+  const allPatterns = [...CLAIM_PATTERNS, ...RIA_CLAIM_PATTERNS];
+
+  for (const rule of allPatterns) {
     const matches = text.match(rule.pattern);
     if (matches && matches.length > 0) {
       const unique = [...new Set(matches.map((m) => m.toLowerCase()))];
@@ -145,6 +279,41 @@ function analyzeText(text: string): Finding[] {
         location: `Detected terms: ${unique.slice(0, 4).join(", ")}${unique.length > 4 ? "…" : ""}`,
       });
     }
+  }
+
+  if (
+    !text.toLowerCase().includes("not an offer") &&
+    !text.toLowerCase().includes("not a solicitation") &&
+    !text.toLowerCase().includes("not a recommendation") &&
+    text.length > 50
+  ) {
+    findings.push({
+      id: `finding-${++id}`,
+      category: "RIA Disclaimer",
+      title: "Standard financial disclaimer may be missing",
+      summary: "Promotional material for financial services should include a standard disclaimer.",
+      detail:
+        "RIA and fintech marketing should include language that the material is not an offer, solicitation, or recommendation of securities or advisory services.",
+      risk: "caution",
+      regulation: "SEC Marketing Rule 206(4)-1 · FINRA Rule 2210",
+      recommendation: `Add standard disclaimer: "${ADVISORPILOT_KNOWLEDGE.standardDisclaimer.slice(0, 80)}…"`,
+      location: "No disclaimer keywords detected in submitted text",
+    });
+  }
+
+  if (/[\u2013\u2014]/.test(text)) {
+    findings.push({
+      id: `finding-${++id}`,
+      category: "Copy Style",
+      title: "Em-dash detected in marketing copy",
+      summary: "Em-dashes and en-dashes are not permitted in generated ad or post content.",
+      detail:
+        "Brand guardrails require plain punctuation. Replace em-dashes with commas or periods for a cleaner, more professional tone.",
+      risk: "caution",
+      regulation: "Internal brand style guide",
+      recommendation: "Replace all em-dashes and en-dashes with commas or periods, then re-run review.",
+      location: "Em-dash or en-dash character found in submitted text",
+    });
   }
 
   return findings;
@@ -194,7 +363,7 @@ export async function runAIReview(
   ].join(" ");
 
   const findings = analyzeText(combinedText);
-  const checklist = ASSET_CHECKS[submission.assetType] ?? ASSET_CHECKS.other;
+  const checklist = evaluateChecklist(submission.assetType, combinedText);
   const overallRisk = getOverallRisk(findings);
 
   const failedChecks = checklist.filter((c) => !c.passed);
@@ -249,12 +418,4 @@ export async function runAIReview(
   };
 }
 
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
+export { formatFileSize, generateId } from "./utils";

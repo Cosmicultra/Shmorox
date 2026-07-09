@@ -1,31 +1,120 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-serif: 'Playfair Display', Georgia, serif;
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --bg-base: 244 246 248;
+  --bg-surface: 255 255 255;
+  --bg-elevated: 255 255 255;
+  --bg-muted: 247 248 250;
+  --text-primary: 5 28 44;
+  --text-muted: 74 85 104;
+  --text-inverse: 255 255 255;
+  --accent: 34 81 255;
+  --accent-muted: 61 90 254;
+  --accent-gold: 200 169 110;
+  --accent-gold-dark: 166 139 75;
+  --border: 226 232 240;
+  --border-strong: 203 213 225;
+  --success: 13 124 78;
+  --warning: 180 83 9;
+  --danger: 180 35 24;
+  --glass: 255 255 255 / 0.72;
+  --glow: 34 81 255;
+}
+
+.dark {
+  --bg-base: 20 24 32;
+  --bg-surface: 30 36 48;
+  --bg-elevated: 38 45 58;
+  --bg-muted: 26 31 42;
+  --text-primary: 247 248 250;
+  --text-muted: 138 155 171;
+  --text-inverse: 5 28 44;
+  --accent: 61 90 254;
+  --accent-muted: 34 81 255;
+  --accent-gold: 200 169 110;
+  --accent-gold-dark: 166 139 75;
+  --border: 42 51 68;
+  --border-strong: 58 68 88;
+  --success: 52 211 153;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+  --glass: 30 36 48 / 0.85;
+  --glow: 61 90 254;
 }
 
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
   }
 
   body {
-    @apply font-sans text-mckinsey-navy;
+    @apply bg-base font-sans text-primary antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgb(var(--glow) / 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgb(var(--accent-gold) / 0.04), transparent);
   }
 
-  h1, h2, h3 {
-    @apply font-serif;
+  h1, h2, h3, h4 {
+    @apply font-sans tracking-tight text-primary;
+  }
+
+  ::selection {
+    background: rgb(var(--accent) / 0.2);
+  }
+}
+
+@layer components {
+  .glass-surface {
+    @apply border border-border bg-surface/80 backdrop-blur-xl;
+  }
+
+  .gradient-border {
+    background:
+      linear-gradient(rgb(var(--bg-surface)), rgb(var(--bg-surface))) padding-box,
+      linear-gradient(135deg, rgb(var(--accent) / 0.3), rgb(var(--accent-gold) / 0.2)) border-box;
+    border: 1px solid transparent;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgb(var(--bg-muted)) 0%,
+      rgb(var(--bg-elevated)) 50%,
+      rgb(var(--bg-muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
   }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.25s ease-out forwards;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

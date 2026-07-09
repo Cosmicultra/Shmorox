@@ -8,6 +8,8 @@ export type AssetType =
   | "print"
   | "other";
 
+import type { LayoutVariant } from "./ad/visual-config";
+
 export type ReviewStatus = "draft" | "analyzing" | "complete";
 
 export type RiskLevel = "clear" | "caution" | "action-required";
@@ -122,4 +124,148 @@ export const MARKETS = [
   "United Kingdom",
   "Australia",
   "Global / Multi-market",
+];
+
+export type SocialPlatform = "linkedin" | "instagram" | "x" | "tiktok";
+
+export type AspectRatio = "1:1" | "9:16";
+
+export type PipelinePhase =
+  | "generating"
+  | "legal_review"
+  | "fixing"
+  | "approved"
+  | "packaging"
+  | "ready_to_post"
+  | "posted"
+  | "failed";
+
+export type CampaignStatus =
+  | "draft"
+  | "running"
+  | "approved"
+  | "posted"
+  | "failed";
+
+export interface GeneratedAd {
+  id: string;
+  platform: SocialPlatform;
+  aspectRatio: AspectRatio;
+  contentPillarId?: string;
+  layoutVariant?: LayoutVariant;
+  headline: string;
+  subhead: string;
+  cta: string;
+  disclaimer: string;
+  /** Raw AI creative output before marketing packaging */
+  creativeAssetUrl?: string;
+  /** Final marketing-ready asset with logo, disclaimer, QR */
+  imageDataUrl?: string;
+  width: number;
+  height: number;
+}
+
+export type {
+  CampaignAssetType,
+  ConceptVariation,
+  CreativeBrief,
+  CreativeJob,
+  CreativeReviewResult,
+  StrategicDirection,
+  StrategyReviewAttempt,
+  StrategyReviewResult,
+  VariationGateAttempt,
+  VariationGateResult,
+} from "./creative/types";
+
+export interface FixIteration {  iteration: number;
+  findings: Finding[];
+  headlineBefore: string;
+  headlineAfter: string;
+  subheadBefore: string;
+  subheadAfter: string;
+}
+
+export interface CampaignRun {
+  id: string;
+  brand: "AdvisorPilot";
+  contentPillar: string;
+  platforms: SocialPlatform[];
+  phase: PipelinePhase;
+  status: CampaignStatus;
+  ads: GeneratedAd[];
+  legalReviewId?: string;
+  iteration: number;
+  fixHistory: FixIteration[];
+  caption?: string;
+  captionsByPlatform?: Partial<Record<SocialPlatform, string>>;
+  hashtags: string[];
+  hashtagsByPlatform?: Partial<Record<SocialPlatform, string[]>>;
+  qrUrl: string;
+  progressMessage?: string;
+  creativeBrief?: import("./creative/types").CreativeBrief;
+  originalBrief?: import("./creative/types").CreativeBrief;
+  creativeReview?: import("./creative/types").CreativeReviewResult;
+  strategyApproved?: boolean;
+  strategyReviewHistory?: import("./creative/types").StrategyReviewAttempt[];
+  finalStrategyRationale?: string;
+  conceptVariations?: import("./creative/types").ConceptVariation[];
+  visualDiversityReport?: import("./creative/types").VisualDiversityReport;
+  variationGateHistory?: import("./creative/types").VariationGateAttempt[];
+  selectedConcept?: import("./creative/types").ConceptVariation;
+  creativeJob?: import("./creative/types").CreativeJob;
+  masterImageUrl?: string;
+  imagesBlocked?: boolean;
+  creativePipelineStep?: import("./creative/types").CreativePipelineStep;
+  adaptedImages?: Partial<Record<AspectRatio, string>>;
+  selectionRationale?: string;
+  createdAt: string;
+  completedAt?: string;
+  postedAt?: string;
+  postResults?: Partial<Record<SocialPlatform, { success: boolean; message: string }>>;
+  /** When true, generates AI preview images for every concept (expensive). */
+  generateConceptImages?: boolean;
+  generationCost?: import("./openai/cost-tracker").GenerationCostReport;
+}
+
+export const SOCIAL_PLATFORMS: {
+  id: SocialPlatform;
+  label: string;
+  description: string;
+  aspectRatios: AspectRatio[];
+  hashtagLimit: number;
+  charLimit: number;
+}[] = [
+  {
+    id: "linkedin",
+    label: "LinkedIn",
+    description: "Professional network for RIAs and wealth managers",
+    aspectRatios: ["1:1"],
+    hashtagLimit: 5,
+    charLimit: 3000,
+  },
+  {
+    id: "instagram",
+    label: "Instagram",
+    description: "Feed posts and Stories for visual brand content",
+    aspectRatios: ["1:1", "9:16"],
+    hashtagLimit: 15,
+    charLimit: 2200,
+  },
+  {
+    id: "x",
+    label: "X (Twitter)",
+    description: "Short-form updates and industry conversation",
+    aspectRatios: ["1:1"],
+    hashtagLimit: 3,
+    charLimit: 280,
+  },
+  {
+    id: "tiktok",
+    label: "TikTok",
+    description: "Vertical video and image content for reach",
+    aspectRatios: ["9:16"],
+    hashtagLimit: 8,
+    charLimit: 2200,
+  },
 ];

@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { motion, AnimatePresence } from "@/components/motion";
 import { Upload, File, X, Image as ImageIcon, Film } from "lucide-react";
-import clsx from "clsx";
-import { formatFileSize, generateId } from "@/lib/review-engine";
+import { cn } from "@/lib/cn";
+import { formatFileSize, generateId } from "@/lib/utils";
 import type { UploadedFile } from "@/lib/types";
 import { HelpTip } from "./ui";
 
@@ -42,7 +43,7 @@ export function FileUploader({
 
   return (
     <div className="space-y-4">
-      <div
+      <motion.div
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -53,11 +54,16 @@ export function FileUploader({
           setDragging(false);
           processFiles(e.dataTransfer.files);
         }}
-        className={clsx(
-          "relative rounded-lg border-2 border-dashed p-10 text-center transition-colors",
+        animate={{
+          scale: dragging ? 1.01 : 1,
+          borderColor: dragging ? "rgb(var(--accent))" : "rgb(var(--border))",
+        }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        className={cn(
+          "relative rounded-xl border-2 border-dashed p-10 text-center transition-colors",
           dragging
-            ? "border-mckinsey-blue bg-blue-50/30"
-            : "border-mckinsey-border bg-white hover:border-mckinsey-blue/50"
+            ? "border-accent bg-accent/5 shadow-glow"
+            : "border-border bg-surface hover:border-accent/40"
         )}
       >
         <input
@@ -67,60 +73,67 @@ export function FileUploader({
           className="absolute inset-0 cursor-pointer opacity-0"
           onChange={(e) => processFiles(e.target.files)}
         />
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-mckinsey-mist">
-          <Upload className="h-6 w-6 text-mckinsey-navy" strokeWidth={1.5} />
-        </div>
-        <p className="font-medium text-mckinsey-navy">
-          Drag files here, or click to browse
-        </p>
-        <p className="mt-1 text-sm text-mckinsey-slate">
+        <motion.div
+          animate={{ y: dragging ? -4 : 0 }}
+          className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/10 ring-1 ring-accent/20"
+        >
+          <Upload className="h-6 w-6 text-accent" strokeWidth={1.75} />
+        </motion.div>
+        <p className="font-medium text-primary">Drag files here, or click to browse</p>
+        <p className="mt-1 text-sm text-secondary">
           Videos, images, PDFs, presentations, and documents
         </p>
-      </div>
+      </motion.div>
 
       <HelpTip>
         You can upload multiple files at once — for example, a video ad plus its script,
         or all frames in a social carousel.
       </HelpTip>
 
-      {files.length > 0 && (
-        <ul className="space-y-2">
-          {files.map((file) => (
-            <li
-              key={file.id}
-              className="flex items-center gap-3 rounded-md border border-mckinsey-border bg-white p-3"
-            >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-mckinsey-mist">
-                {file.previewUrl ? (
-                  <ImageIcon className="h-5 w-5 text-mckinsey-blue" />
-                ) : file.type.startsWith("video/") ? (
-                  <Film className="h-5 w-5 text-mckinsey-blue" />
-                ) : (
-                  <File className="h-5 w-5 text-mckinsey-blue" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-mckinsey-navy">{file.name}</p>
-                <p className="text-xs text-mckinsey-slate">{formatFileSize(file.size)}</p>
-              </div>
-              {file.previewUrl && (
-                <img
-                  src={file.previewUrl}
-                  alt=""
-                  className="h-10 w-10 rounded object-cover"
-                />
-              )}
-              <button
-                onClick={() => removeFile(file.id)}
-                className="rounded p-1 text-mckinsey-slate hover:bg-mckinsey-mist hover:text-mckinsey-danger"
-                aria-label={`Remove ${file.name}`}
+      <AnimatePresence>
+        {files.length > 0 && (
+          <motion.ul
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-2"
+          >
+            {files.map((file, i) => (
+              <motion.li
+                key={file.id}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                transition={{ delay: i * 0.05 }}
+                className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3"
               >
-                <X className="h-4 w-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  {file.previewUrl ? (
+                    <ImageIcon className="h-5 w-5 text-accent" />
+                  ) : file.type.startsWith("video/") ? (
+                    <Film className="h-5 w-5 text-accent" />
+                  ) : (
+                    <File className="h-5 w-5 text-accent" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-primary">{file.name}</p>
+                  <p className="font-mono text-xs text-secondary">{formatFileSize(file.size)}</p>
+                </div>
+                {file.previewUrl && (
+                  <img src={file.previewUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                )}
+                <button
+                  onClick={() => removeFile(file.id)}
+                  className="rounded-lg p-1.5 text-secondary transition-colors hover:bg-danger/10 hover:text-danger"
+                  aria-label={`Remove ${file.name}`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </motion.li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
