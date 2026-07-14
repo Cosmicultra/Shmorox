@@ -50,9 +50,23 @@ export function AdIcon({
   );
 }
 
-export function FeatureIconCircle({ icon, label }: { icon: IconKey; label: string }) {
+export function FeatureIconCircle({
+  icon,
+  label,
+  align = "center",
+}: {
+  icon: IconKey;
+  label: string;
+  align?: "left" | "center";
+}) {
   return (
-    <div style={{ flex: 1, textAlign: "center" }}>
+    <div
+      style={{
+        flex: align === "left" ? "0 0 auto" : undefined,
+        width: align === "left" ? 120 : undefined,
+        textAlign: align,
+      }}
+    >
       <div
         style={{
           width: 52,
@@ -62,7 +76,7 @@ export function FeatureIconCircle({ icon, label }: { icon: IconKey; label: strin
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          margin: "0 auto 10px",
+          margin: align === "left" ? "0 0 10px" : "0 auto 10px",
           background: "rgba(255,255,255,0.8)",
         }}
       >

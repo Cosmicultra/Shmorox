@@ -4,10 +4,28 @@ import { createElement } from "react";
 import { AdCardTemplate } from "@/components/AdCardTemplate";
 import type { GeneratedAd } from "@/lib/types";
 import { buildDemoUrl } from "@/lib/knowledge/advisorpilot";
-import { packageMarketingAsset } from "./marketing-packager";
+import { enrichGeneratedAd } from "./ad-creative-content";
+import { AD_CARD_LAYOUT_VERSION } from "./ad-card-layout-version";
+import { ASSET_PACK_VERSION } from "./asset-pack";
+import {
+  getCachedAdImage,
+  invalidateCachedAdImage,
+  setCachedAdImage,
+} from "./ad-image-cache";
+import { LAYOUT } from "./ad-design-system";
+import { PRODUCT_SCREENSHOTS } from "./product-screenshots";
 import { generateQRDataUrl } from "./qr-compositor";
+import { AD_TEMPLATE_REGISTRY } from "./ad-template-registry";
 
-const ASSET_PATHS = ["/ad-assets/advisorpilot-logo.png"];
+const LAYOUT_EXAMPLE_PATHS = Object.values(AD_TEMPLATE_REGISTRY)
+  .map((t) => t.visual.backgroundAsset)
+  .filter((p): p is string => Boolean(p));
+
+const ASSET_PATHS = [
+  "/ad-assets/advisorpilot-logo.png",
+  ...PRODUCT_SCREENSHOTS.map((s) => s.path),
+  ...LAYOUT_EXAMPLE_PATHS,
+];
 
 const FONT_CSS_URL =
   "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap";
@@ -101,7 +119,33 @@ async function waitForPaint(): Promise<void> {
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  await new Promise((resolve) => setTimeout(resolve, 500));
+}
+
+function shouldUseServerRender(): boolean {
+  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SERVER_RENDER === "true") {
+    return true;
+  }
+  return process.env.NODE_ENV === "production";
+}
+
+async function renderAdViaServer(
+  ad: GeneratedAd,
+  includeQR: boolean,
+  qrUrl?: string
+): Promise<string | null> {
+  try {
+    const response = await fetch("/api/render-ad", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ad, includeQR, qrUrl }),
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { imageDataUrl?: string };
+    return data.imageDataUrl ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function renderAdToImage(
@@ -109,6 +153,13 @@ export async function renderAdToImage(
   includeQR = true,
   qrUrl?: string
 ): Promise<string> {
+  const enriched = enrichGeneratedAd(ad);
+
+  if (shouldUseServerRender()) {
+    const serverImage = await renderAdViaServer(enriched, includeQR, qrUrl);
+    if (serverImage) return serverImage;
+  }
+
   await prepareAdRenderEnvironment();
 
   const container = document.createElement("div");
@@ -117,23 +168,24 @@ export async function renderAdToImage(
   container.style.top = "0";
   document.body.appendChild(container);
 
-  const effectiveQrUrl =
-    qrUrl || buildDemoUrl(ad.platform, undefined);
+  const effectiveQrUrl = qrUrl || buildDemoUrl(enriched.platform, undefined);
   let qrDataUrl: string | undefined;
   if (includeQR) {
-    qrDataUrl = await generateQRDataUrl(effectiveQrUrl, 320);
+    qrDataUrl = await generateQRDataUrl(effectiveQrUrl, LAYOUT.qrSize * 2);
   }
 
   const root = createRoot(container);
   root.render(
     createElement(AdCardTemplate, {
-      headline: ad.headline,
-      subhead: ad.subhead,
-      cta: ad.cta,
-      disclaimer: ad.disclaimer,
-      aspectRatio: ad.aspectRatio,
-      contentPillarId: ad.contentPillarId,
-      layoutVariant: ad.layoutVariant,
+      headline: enriched.headline,
+      subhead: enriched.subhead,
+      cta: enriched.cta,
+      disclaimer: enriched.disclaimer,
+      aspectRatio: enriched.aspectRatio,
+      contentPillarId: enriched.contentPillarId,
+      layoutVariant: enriched.layoutVariant,
+      templateId: enriched.templateId,
+      platform: enriched.platform,
       qrDataUrl,
     })
   );
@@ -144,12 +196,11 @@ export async function renderAdToImage(
   const fontEmbedCSS = await buildFontEmbedCSS();
 
   const dataUrl = await toPng(element, {
-    width: ad.width,
-    height: ad.height,
+    width: enriched.width,
+    height: enriched.height,
     pixelRatio: 2,
     cacheBust: true,
     includeQueryParams: true,
-    // Pre-inlined fonts bypass html-to-image's cssRules walk (cross-origin SecurityError).
     fontEmbedCSS,
     skipFonts: fontEmbedCSS === "",
   });
@@ -160,62 +211,90 @@ export async function renderAdToImage(
   return dataUrl;
 }
 
+export interface RenderAdsOptions {
+  campaignId?: string;
+  /** Re-render even when a cached or in-memory image already exists */
+  force?: boolean;
+}
+
+async function renderSingleAd(
+  ad: GeneratedAd,
+  includeQR: boolean,
+  qrUrl: string | undefined,
+  options?: RenderAdsOptions
+): Promise<GeneratedAd> {
+  const { campaignId, force = false } = options ?? {};
+  const enriched = enrichGeneratedAd(ad);
+
+  if (!force && enriched.imageDataUrl) {
+    return enriched;
+  }
+
+  if (
+    !force &&
+    enriched.renderedLayoutVersion === AD_CARD_LAYOUT_VERSION &&
+    enriched.contentHash &&
+    enriched.imageDataUrl
+  ) {
+    return enriched;
+  }
+
+  if (!force && campaignId) {
+    const cached = await getCachedAdImage(campaignId, enriched.id, {
+      contentHash: enriched.contentHash,
+      layoutVersion: AD_CARD_LAYOUT_VERSION,
+      assetPackVersion: ASSET_PACK_VERSION,
+    });
+    if (cached && cached.layoutVersion === AD_CARD_LAYOUT_VERSION) {
+      return {
+        ...enriched,
+        imageDataUrl: cached.imageDataUrl,
+        renderedLayoutVersion: cached.layoutVersion,
+      };
+    }
+  }
+
+  const imageDataUrl = await renderAdToImage(enriched, includeQR, qrUrl);
+  const renderedLayoutVersion = AD_CARD_LAYOUT_VERSION;
+
+  if (campaignId) {
+    await setCachedAdImage(campaignId, enriched.id, imageDataUrl, renderedLayoutVersion, {
+      contentHash: enriched.contentHash,
+      assetPackVersion: ASSET_PACK_VERSION,
+    });
+  }
+
+  return { ...enriched, imageDataUrl, renderedLayoutVersion };
+}
+
+export async function invalidateAdRenderCache(
+  campaignId: string,
+  adIds: string[]
+): Promise<void> {
+  await Promise.all(adIds.map((adId) => invalidateCachedAdImage(campaignId, adId)));
+}
+
 export async function renderAllAds(
   ads: GeneratedAd[],
   includeQR = true,
-  qrUrl?: string
+  qrUrl?: string,
+  options?: RenderAdsOptions
 ): Promise<GeneratedAd[]> {
   await prepareAdRenderEnvironment();
 
   return Promise.all(
-    ads.map(async (ad) => {
-      const imageDataUrl = await renderAdToImage(ad, includeQR, qrUrl);
-      return { ...ad, imageDataUrl };
-    })
+    ads.map((ad) => renderSingleAd(ad, includeQR, qrUrl, options))
   );
 }
 
-/** Packages creative assets into marketing-ready ads (logo, disclaimer, QR, safe zones). */
+/** Packages ads into final export PNGs using the branded AdCardTemplate (screenshots + layout). */
 export async function renderAdsForPipeline(
   ads: GeneratedAd[],
   includeQR = true,
-  qrUrl?: string
+  qrUrl?: string,
+  options?: RenderAdsOptions
 ): Promise<GeneratedAd[]> {
-  const effectiveQrUrl = qrUrl ?? buildDemoUrl("social");
-  await prepareAdRenderEnvironment();
-
-  return Promise.all(
-    ads.map(async (ad) => {
-      let creativeSource = ad.creativeAssetUrl ?? ad.imageDataUrl;
-
-      if (creativeSource && ad.creativeAssetUrl && ad.aspectRatio !== "1:1") {
-        const { adaptMasterToAspectRatio } = await import("./layout-adapter");
-        creativeSource = await adaptMasterToAspectRatio(ad.creativeAssetUrl, ad.aspectRatio);
-      }
-
-      if (creativeSource && ad.creativeAssetUrl) {
-        const packaged = await packageMarketingAsset({
-          creativeAssetUrl: creativeSource,
-          headline: ad.headline,
-          subhead: ad.subhead,
-          cta: ad.cta,
-          disclaimer: ad.disclaimer,
-          aspectRatio: ad.aspectRatio,
-          platform: ad.platform,
-          qrUrl: effectiveQrUrl,
-          includeQR,
-        });
-        return { ...ad, imageDataUrl: packaged };
-      }
-
-      if (creativeSource && !ad.creativeAssetUrl) {
-        return ad;
-      }
-
-      const imageDataUrl = await renderAdToImage(ad, includeQR, effectiveQrUrl);
-      return { ...ad, imageDataUrl };
-    })
-  );
+  return renderAllAds(ads, includeQR, qrUrl ?? buildDemoUrl("social"), options);
 }
 
 function preloadImage(src: string): Promise<void> {

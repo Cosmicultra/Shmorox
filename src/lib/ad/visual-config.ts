@@ -1,9 +1,122 @@
 import { VISUAL_TOKENS } from "@/lib/tokens";
+import { getLayoutVariantForPillar, getTemplateForPillar } from "./ad-template-registry";
 import { sanitizeNoEmDash } from "./content-guardrails";
+import {
+  LAYOUT_EXAMPLE_BY_VARIANT,
+  LAYOUT_LEGACY_BACKGROUNDS,
+  getLayoutExamplesPromptBlock,
+} from "./layout-examples";
+import {
+  getPrimaryScreenshotForPillar,
+  type ProductScreenshot,
+} from "./product-screenshots";
 
 export { VISUAL_TOKENS };
+export {
+  PRODUCT_SCREENSHOTS,
+  PILLAR_PRIMARY_SCREENSHOT,
+  getScreenshotsForPillar,
+  getPrimaryScreenshotForPillar,
+  getProductScreenshotsPromptBlock,
+} from "./product-screenshots";
+export {
+  LAYOUT_EXAMPLES,
+  LAYOUT_EXAMPLE_BY_VARIANT,
+  getLayoutExample,
+  getLayoutExamplesForVariant,
+  getLayoutExamplesPromptBlock,
+} from "./layout-examples";
 
 export type LayoutVariant = "split-office" | "split-clarity" | "diagonal-growth";
+
+export type VisualStyle = "office-laptop" | "office-monitor" | "dashboard" | "diagonal";
+
+export interface VisualPanelFrameConfig {
+  rotateY: number;
+  rotateX: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+export interface PillarStep {
+  icon: IconKey;
+  title: string;
+  description: string;
+}
+
+export const PILLAR_STEPS: Record<string, PillarStep[]> = {
+  "prospect-workflow": [
+    { icon: "file", title: "Upload statements", description: "We extract what matters." },
+    { icon: "chart", title: "AI analyzes & organizes", description: "Holdings, fees, performance, risk." },
+    { icon: "check", title: "You review & deliver", description: "Professional, polished, and fast." },
+  ],
+};
+
+/** Pillar overrides — e.g. prospect-workflow uses dashboard style on split-office layout. */
+export const PILLAR_VISUAL_STYLE: Partial<Record<string, VisualStyle>> = {
+  "prospect-workflow": "dashboard",
+};
+
+export const VISUAL_PANEL_CONFIG: Record<
+  VisualStyle,
+  VisualPanelFrameConfig & { device: "laptop" | "monitor" | "none" }
+> = {
+  "office-laptop": {
+    device: "laptop",
+    rotateY: -8,
+    rotateX: 2,
+    scale: 1,
+    offsetX: -12,
+    offsetY: 8,
+  },
+  "office-monitor": {
+    device: "monitor",
+    rotateY: -5,
+    rotateX: 1,
+    scale: 1.02,
+    offsetX: -8,
+    offsetY: 4,
+  },
+  dashboard: {
+    device: "none",
+    rotateY: -6,
+    rotateX: 1.5,
+    scale: 1.05,
+    offsetX: 0,
+    offsetY: 0,
+  },
+  diagonal: {
+    device: "none",
+    rotateY: 0,
+    rotateX: 0,
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+  },
+};
+
+export function getVisualStyle(
+  pillarId?: string,
+  layoutVariant: LayoutVariant = "split-office"
+): VisualStyle {
+  if (pillarId && PILLAR_VISUAL_STYLE[pillarId]) {
+    return PILLAR_VISUAL_STYLE[pillarId]!;
+  }
+  if (layoutVariant === "diagonal-growth") return "diagonal";
+  if (layoutVariant === "split-clarity") return "office-monitor";
+  return "office-laptop";
+}
+
+export function getStepsForPillar(pillarId?: string): PillarStep[] | undefined {
+  if (pillarId && PILLAR_STEPS[pillarId]) return PILLAR_STEPS[pillarId];
+  return undefined;
+}
+
+export function usesStepList(pillarId?: string): boolean {
+  return Boolean(pillarId && PILLAR_STEPS[pillarId]?.length);
+}
+
 export type IconKey =
   | "clock"
   | "pie"
@@ -30,11 +143,21 @@ export const PILLAR_LAYOUTS: Record<string, LayoutVariant> = {
   "compliance-posture": "split-clarity",
 };
 
+/** Canonical layout-example PNGs (preferred). */
 export const LAYOUT_BACKGROUNDS: Record<LayoutVariant, string> = {
-  "split-office": "/ad-assets/square-reference.png",
-  "split-clarity": "/ad-assets/template-clarity.png",
-  "diagonal-growth": "/ad-assets/template-growth.png",
+  ...LAYOUT_EXAMPLE_BY_VARIANT,
 };
+
+/** Legacy paths (square-reference / template-*) — same files, older names. */
+export const LAYOUT_LEGACY_PATHS = LAYOUT_LEGACY_BACKGROUNDS;
+
+export function getLayoutExamplePath(variant: LayoutVariant): string {
+  return LAYOUT_BACKGROUNDS[variant] ?? LAYOUT_LEGACY_PATHS["split-office"];
+}
+
+export function getLayoutInspirationBlock(variant?: LayoutVariant): string {
+  return getLayoutExamplesPromptBlock(variant);
+}
 
 export const PILLAR_FEATURES: Record<string, FeatureIcon[]> = {
   "prospect-workflow": [
@@ -81,7 +204,7 @@ export const PILLAR_SUPPORTING: Record<string, string> = {
   "prospect-workflow":
     "Analyze holdings. Generate insights. Prepare reviews. Stay organized.",
   "statement-intelligence":
-    "From custodian PDFs to confirmed holdings, before analysis depends on them.",
+    "Custodian PDFs in. Standardized holdings out. Ready for analysis.",
   "portfolio-narrative":
     "AdvisorPilot™ helps you analyze, summarize, and prepare, so you can focus on what matters most.",
   "operational-scale":
@@ -97,8 +220,16 @@ export const FOOTER_TRUST: { icon: IconKey; label: string }[] = [
 ];
 
 export function getLayoutForPillar(pillarId?: string): LayoutVariant {
-  if (pillarId && PILLAR_LAYOUTS[pillarId]) return PILLAR_LAYOUTS[pillarId];
-  return "split-office";
+  return getLayoutVariantForPillar(pillarId);
+}
+
+export function getTemplateDefinitionForPillar(pillarId?: string) {
+  return getTemplateForPillar(pillarId);
+}
+
+/** Real product UI path for ad templates / creative (per pillar). */
+export function getProductUiForPillar(pillarId?: string): ProductScreenshot | undefined {
+  return getPrimaryScreenshotForPillar(pillarId);
 }
 
 export function getFeaturesForPillar(pillarId?: string): FeatureIcon[] {

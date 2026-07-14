@@ -1,3 +1,13 @@
+import { getLayoutExamplesPromptBlock } from "../ad/layout-examples";
+import { getProductScreenshotsPromptBlock } from "../ad/product-screenshots";
+import {
+  getCopyLimitsForTemplate,
+  getTemplateIdForPillar,
+  getTemplatePromptBlock,
+  resolveTemplateFromArchetype,
+} from "../ad/ad-template-registry";
+import { getStepSchemaForPillar } from "../ad/ad-layout-linter";
+import { PILLAR_LAYOUTS } from "../ad/visual-config";
 import { ADVISORPILOT_KNOWLEDGE, getPillarById } from "../knowledge/advisorpilot";
 import { getBrandDNA, getBrandDNAContextBlock } from "./brand-dna";
 import {
@@ -133,6 +143,9 @@ PRODUCT
 
 The software should look real. Never generate fake dashboards when real AdvisorPilot UI exists.
 Use authentic workflows, real reports, real statement analysis. Show believable enterprise software.
+Prefer the real product screenshots catalog (prospect review, statement capture/intake,
+confirm holdings, book of record, portfolio analysis, review & analysis, deliverables,
+meeting checklist, review handoffs). Match chrome, grid, and badge language from those assets.
 
 ===================================================
 BACKGROUND
@@ -188,6 +201,28 @@ Customer pain (before): ${pillar.transformationBefore}
 Transformation (after): ${pillar.transformationAfter}`
     : "";
 
+  const screenshotContext = getProductScreenshotsPromptBlock(input.contentPillarId);
+  const layoutVariant = input.contentPillarId
+    ? PILLAR_LAYOUTS[input.contentPillarId]
+    : undefined;
+  const layoutContext = getLayoutExamplesPromptBlock(layoutVariant);
+
+  const templateId = getTemplateIdForPillar(input.contentPillarId);
+  const copyLimits = getCopyLimitsForTemplate(templateId);
+  const templateContext = getTemplatePromptBlock(templateId);
+  const stepSchema = getStepSchemaForPillar(input.contentPillarId);
+  const exportCopyRules = `
+EXPORT TEMPLATE (deterministic ad card — copy MUST fit):
+${templateContext}
+- Headline: max ${copyLimits.maxHeadlineChars} characters (no em-dashes)
+- Supporting copy: max ${copyLimits.maxSubheadChars} characters
+- Proof type: ${copyLimits.proofType}${copyLimits.accentBar ? " (include accent bar visual cue in hierarchy)" : ""}
+${
+  copyLimits.proofType === "steps" && stepSchema
+    ? `- When proof type is steps, use exactly 3 steps matching this shape:\n${JSON.stringify(stepSchema, null, 2)}`
+    : ""
+}`;
+
   const customContext = input.customBrief
     ? `\nCustom brief overrides:\n${JSON.stringify(input.customBrief, null, 2)}`
     : "";
@@ -206,6 +241,12 @@ ${getCompositionFreedomBlock()}
 
 Brand colors:
 ${getBrandColorsBlock()}
+
+${layoutContext}
+
+${exportCopyRules}
+
+${screenshotContext}
 
 Asset type: ${assetLabel}
 Campaign type: ${input.campaignType ?? (pillar ? pillar.title : "Enterprise Campaign")}
@@ -255,10 +296,14 @@ Return JSON in exactly this shape:
 export function buildVariationPrompt(
   baseBrief: CreativeBrief,
   style: ConceptStyle,
-  layoutArchetype: LayoutArchetypeId
+  layoutArchetype: LayoutArchetypeId,
+  contentPillarId?: string
 ): string {
   const strategy = CONCEPT_STRATEGIES[style];
   const archetypeBlock = getLayoutArchetypeBlock(layoutArchetype);
+  const template = resolveTemplateFromArchetype(layoutArchetype, contentPillarId);
+  const copyLimits = getCopyLimitsForTemplate(template.id);
+  const stepSchema = getStepSchemaForPillar(contentPillarId);
 
   return `Develop a distinct creative STRATEGY with a specific LAYOUT ARCHETYPE for this campaign.
 
@@ -270,6 +315,15 @@ Sample headline direction: ${strategy.sampleHeadline}
 
 LAYOUT ARCHETYPE (composition — MUST follow this, not a generic template):
 ${archetypeBlock}
+
+EXPORT TEMPLATE (maps to final ad card): ${template.id}
+${getTemplatePromptBlock(template.id)}
+Copy limits: headline max ${copyLimits.maxHeadlineChars} chars, subhead max ${copyLimits.maxSubheadChars} chars, proof=${copyLimits.proofType}.
+${
+  copyLimits.proofType === "steps" && stepSchema
+    ? `Use 3 steps: ${JSON.stringify(stepSchema)}`
+    : ""
+}
 
 Base brief (already reviewed):
 ${JSON.stringify(baseBrief, null, 2)}

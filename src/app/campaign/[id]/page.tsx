@@ -23,6 +23,8 @@ import {
   lockPipelineInSession,
   unlockPipelineInSession,
 } from "@/lib/pipeline-lock";
+import { PostTextPreview } from "@/components/PostTextPreview";
+import { formatPostTextForApi } from "@/lib/ad/caption-generator";
 import { getFullPostForPlatform } from "@/lib/post-package";
 import { SOCIAL_PLATFORMS, type SocialPlatform, type Finding, type GeneratedAd, type CampaignRun } from "@/lib/types";
 import {
@@ -165,7 +167,7 @@ export default function CampaignDetailPage() {
     };
   }, [campaign, addReview, setResult, updateReview, updateCampaign, getResult]);
 
-  // Ad PNGs are kept in memory only — regenerate after reload when metadata exists.
+  // Restore cached PNGs first; only render ads that were never packaged (new pipeline ads).
   useEffect(() => {
     if (!campaign || imagesRegenerating.current) return;
     if (campaign.ads.length === 0) return;
@@ -183,16 +185,21 @@ export default function CampaignDetailPage() {
     const includeQR =
       Boolean(campaign.qrUrl) &&
       QR_AD_PHASES.includes(campaign.phase as (typeof QR_AD_PHASES)[number]);
+    const qrUrl = campaign.qrUrl || ADVISORPILOT_DEMO_URL;
 
-    void import("@/lib/ad/image-renderer")
-      .then(({ renderAllAds }) =>
-        renderAllAds(campaign.ads, includeQR, campaign.qrUrl || ADVISORPILOT_DEMO_URL)
-      )
-      .then((ads) => updateCampaign(campaign.id, { ads }))
-      .finally(() => {
-        imagesRegenerating.current = false;
-        setRenderingAds(false);
-      });
+    void (async () => {
+      const { hydrateCampaignAdImages } = await import("@/lib/ad/ad-image-cache");
+      const { renderAllAds } = await import("@/lib/ad/image-renderer");
+
+      let ads = await hydrateCampaignAdImages(campaign.id, campaign.ads);
+      if (ads.some((ad) => !ad.imageDataUrl)) {
+        ads = await renderAllAds(ads, includeQR, qrUrl, { campaignId: campaign.id });
+      }
+      updateCampaign(campaign.id, { ads });
+    })().finally(() => {
+      imagesRegenerating.current = false;
+      setRenderingAds(false);
+    });
   }, [campaign, updateCampaign]);
 
   if (!campaign) {
@@ -213,7 +220,7 @@ export default function CampaignDetailPage() {
   const handlePost = async (platform: SocialPlatform) => {
     setPosting(platform);
     const ad = campaign.ads.find((a) => a.platform === platform);
-    const text = getFullPostForPlatform(campaign, platform);
+    const text = formatPostTextForApi(getFullPostForPlatform(campaign, platform), platform);
 
     const { postToPlatform } = await import("@/lib/social/client");
     const result = await postToPlatform({
@@ -420,7 +427,7 @@ export default function CampaignDetailPage() {
                         </Badge>
                       )}
                     </div>
-                    <p className="mt-3 whitespace-pre-wrap text-sm text-primary">{postText}</p>
+                    <PostTextPreview text={postText} />
                     <p className="mt-2 font-mono text-xs text-secondary">
                       Hashtags: {hashtags.join(" ")}
                     </p>

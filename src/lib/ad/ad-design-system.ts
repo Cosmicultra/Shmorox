@@ -18,15 +18,26 @@ export const LAYOUT = {
   squareHeight: 1080,
   verticalWidth: 1080,
   verticalHeight: 1920,
-  /** Left copy column — ~42% of canvas */
-  copyColumn: 460,
+  /** Left copy column — ~48% of canvas (matches reference ads) */
+  copyColumn: 520,
   /** Product column bleed past right edge */
-  productBleed: 48,
+  productBleed: 32,
+  /** QR is the only CTA on exported ads */
+  qrSize: 168,
+  /** Logo must read larger than the QR — scaled dynamically via logo-sizing.ts */
+  logoMinQrRatio: 1.42,
+  logoMaxWidth: 500,
+  logoMaxHeight: 248,
+  /** Typical logo+tagline aspect (width / height) */
+  logoAspectRatio: 2.65,
+  footerHeight: 56,
+  /** Right visual column width (square canvas minus copy column) */
+  visualPanelWidth: 560,
 } as const;
 
 export const TYPE = {
   displayLg: { size: 76, lineHeight: 1.02, weight: 600, tracking: "-0.035em" },
-  displayMd: { size: 64, lineHeight: 1.04, weight: 600, tracking: "-0.032em" },
+  displayMd: { size: 58, lineHeight: 1.06, weight: 600, tracking: "-0.03em" },
   displaySm: { size: 52, lineHeight: 1.06, weight: 600, tracking: "-0.03em" },
   bodyLg: { size: 20, lineHeight: 1.45, weight: 400, tracking: "-0.012em" },
   bodyMd: { size: 17, lineHeight: 1.5, weight: 400, tracking: "-0.01em" },
@@ -58,6 +69,9 @@ export const SURFACE = {
   inset: "#F4F6F8",
   sidebar: "#051C2C",
   trustBar: "#051C2C",
+  /** Right-panel office tone */
+  officeWarm: "linear-gradient(160deg, #E8ECF1 0%, #DDE3EA 45%, #D0D8E2 100%)",
+  officeWindow: "linear-gradient(180deg, #8BA4BC 0%, #6B8499 40%, #4A6278 100%)",
 } as const;
 
 /** Editorial serif for headlines — matches AdvisorPilot product */

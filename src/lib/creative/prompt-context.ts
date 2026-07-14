@@ -1,3 +1,7 @@
+import {
+  getPrimaryScreenshotForPillar,
+  getProductScreenshotsPromptBlock,
+} from "../ad/product-screenshots";
 import { getPillarById } from "../knowledge/advisorpilot";
 import { getBrandDNA } from "./brand-dna";
 import type { CreativeBrief, CreativeDirectorInput } from "./types";
@@ -18,6 +22,7 @@ Avoid: ${dna.avoid.slice(0, 4).join("; ")}`;
 export function buildExplorationInputContext(input: CreativeDirectorInput): string {
   const pillar = input.contentPillarId ? getPillarById(input.contentPillarId) : undefined;
   const brandContext = buildCompactBrandContext(input.brandId);
+  const primaryUi = getPrimaryScreenshotForPillar(input.contentPillarId);
 
   const pillarContext = pillar
     ? `Pillar: ${pillar.title}
@@ -26,14 +31,17 @@ Headline seed: ${pillar.headline}
 Subhead seed: ${pillar.subhead}
 CTA seed: ${pillar.cta}
 Pain: ${pillar.transformationBefore}
-After: ${pillar.transformationAfter}`
+After: ${pillar.transformationAfter}
+Primary UI: ${primaryUi?.title ?? "AdvisorPilot product"} — ${primaryUi?.description ?? ""}`
     : "";
 
   return `${brandContext}
 
 Asset: ${input.assetType}
 Campaign: ${input.campaignType ?? pillar?.title ?? "Enterprise Campaign"}
-${pillarContext}`;
+${pillarContext}
+
+${getProductScreenshotsPromptBlock(input.contentPillarId)}`;
 }
 
 /** Short brief summary for follow-up calls — avoids re-sending full JSON. */

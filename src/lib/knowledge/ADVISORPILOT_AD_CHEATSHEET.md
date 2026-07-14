@@ -304,13 +304,27 @@ Always use **AdvisorPilot™** after the first mention in any piece of copy.
 | Full logo + tagline | `AdvisorPilot/public/logo.png` |
 | Icon mark | `AdvisorPilot/public/logo_clean.png` |
 | Creative Studio copy | `Shmorox/public/ad-assets/advisorpilot-logo.png` |
+| Product UI screenshots | `Shmorox/public/ad-assets/screenshots/*.png` |
+| Ad-card layout examples | `Shmorox/public/ad-assets/layout-examples/*.png` |
+
+### Ad-card layout examples (inspiration only)
+
+Catalog: `src/lib/ad/layout-examples.ts`. Do **not** paste these PNGs literally — use structure, then real product screenshots.
+
+| Variant | Example file | Structure |
+|---------|--------------|-----------|
+| `split-office` | `split-office-laptop.png` (+ monitor / trust-bar) | 50/50: copy left, device lifestyle right, navy trust footer |
+| `split-clarity` | `split-clarity.png` | 50/50: clarity headline + 4 icons, monitor right, 4-icon footer |
+| `diagonal-growth` | `diagonal-growth.png` | Diagonal cut: copy ~60% left, navy mountain + rising chart right |
+
+Legacy aliases (same art): `square-reference.png`, `template-clarity.png`, `template-growth.png`.
 
 ### Ad layout rules (Creative Studio pipeline)
 
 | Element | Rule |
 |---------|------|
-| Logo | Top-left, max 88px height — must not overlap headline |
-| QR | Top-right, ~152px — primary CTA, fills empty space |
+| Logo | Top-left, dynamic — always larger than QR; fills blank space when copy is sparse (`logo-sizing.ts`) |
+| QR | Top-right, 168px — primary CTA, fills empty space |
 | Headline | 72px editorial, dominant focal point, intentional `\n` breaks |
 | Transformation | Below headline, muted before → bold after |
 | Subhead | One supporting line, quieter |
@@ -329,13 +343,15 @@ Always use **AdvisorPilot™** after the first mention in any piece of copy.
 
 ### Best product screens to mock per pillar
 
-| Pillar | Screen |
-|--------|--------|
-| prospect-workflow | Wizard rail + 3-column Intake/Analysis/Deliverables |
-| statement-intelligence | Confirm step — PDF source + holdings table |
-| portfolio-narrative | Analysis or Report step — narrative + score cards |
-| operational-scale | Firm metrics — reviews completed, prep time, throughput |
-| compliance-posture | Supervision log — timestamped audit trail |
+Real UI PNGs live in `Shmorox/public/ad-assets/screenshots/` (catalog: `src/lib/ad/product-screenshots.ts`).
+
+| Pillar | Primary screenshot | Supporting |
+|--------|-------------------|------------|
+| prospect-workflow | `prospect-review.png` | statement-capture, meeting-deliverables, deliverables |
+| statement-intelligence | `book-of-record.png` | statement-capture, statement-intake, confirm-holdings |
+| portfolio-narrative | `portfolio-analysis.png` | review-analysis, deliverables |
+| operational-scale | `review-handoffs.png` | prospect-review, deliverables, meeting-deliverables |
+| compliance-posture | `book-of-record.png` | review-analysis, review-handoffs |
 
 ---
 

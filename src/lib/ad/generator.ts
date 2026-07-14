@@ -40,6 +40,7 @@ import { generateId } from "../utils";
 import { ADVISORPILOT_KNOWLEDGE } from "../knowledge/advisorpilot";
 import { sanitizeNoEmDash } from "./content-guardrails";
 import { AD_DIMENSIONS, validateCreative } from "./creative-rules";
+import { enrichGeneratedAd } from "./ad-creative-content";
 import { getLayoutForPillar } from "./visual-config";
 import { generateAdsFromTemplates } from "./template-generator";
 import { SOCIAL_PLATFORMS } from "../types";
@@ -144,20 +145,22 @@ function buildAdsFromBrief(
       validateCreative(headline, subhead, cta, aspectRatio);
       const dims = AD_DIMENSIONS[aspectRatio];
 
-      ads.push({
-        id: generateId(),
-        platform,
-        aspectRatio,
-        contentPillarId,
-        layoutVariant,
-        headline,
-        subhead,
-        cta,
-        disclaimer: sanitizeNoEmDash(ADVISORPILOT_KNOWLEDGE.standardDisclaimer),
-        creativeAssetUrl: adaptedImages[aspectRatio],
-        width: dims.width,
-        height: dims.height,
-      });
+      ads.push(
+        enrichGeneratedAd({
+          id: generateId(),
+          platform,
+          aspectRatio,
+          contentPillarId,
+          layoutVariant,
+          headline,
+          subhead,
+          cta,
+          disclaimer: sanitizeNoEmDash(ADVISORPILOT_KNOWLEDGE.standardDisclaimer),
+          creativeAssetUrl: adaptedImages[aspectRatio],
+          width: dims.width,
+          height: dims.height,
+        })
+      );
     }
   }
 

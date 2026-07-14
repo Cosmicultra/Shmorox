@@ -147,12 +147,18 @@ export type CampaignStatus =
   | "posted"
   | "failed";
 
+export type { AdTemplateId } from "./ad/ad-template-registry";
+
 export interface GeneratedAd {
   id: string;
   platform: SocialPlatform;
   aspectRatio: AspectRatio;
   contentPillarId?: string;
   layoutVariant?: LayoutVariant;
+  /** Export template from ad-template-registry */
+  templateId?: import("./ad/ad-template-registry").AdTemplateId;
+  /** Hash of copy + layout for cache invalidation */
+  contentHash?: string;
   headline: string;
   subhead: string;
   cta: string;
@@ -161,6 +167,8 @@ export interface GeneratedAd {
   creativeAssetUrl?: string;
   /** Final marketing-ready asset with logo, disclaimer, QR */
   imageDataUrl?: string;
+  /** Layout version used when imageDataUrl was last rendered — frozen for finalized ads */
+  renderedLayoutVersion?: number;
   width: number;
   height: number;
 }

@@ -96,12 +96,14 @@ export async function reviseCreativeBrief(
 export async function createConceptVariation(
   baseBrief: CreativeBrief,
   style: ConceptStyle,
-  layoutArchetype?: LayoutArchetypeId
+  layoutArchetype?: LayoutArchetypeId,
+  contentPillarId?: string
 ): Promise<CreativeBrief> {
   const userPrompt = buildVariationPrompt(
     baseBrief,
     style,
-    layoutArchetype ?? baseBrief.layoutArchetype ?? "editorial-cover"
+    layoutArchetype ?? baseBrief.layoutArchetype ?? "editorial-cover",
+    contentPillarId
   );
   const raw = await generateJSON<RawCreativeBriefResponse>(
     EXECUTIVE_CREATIVE_DIRECTOR_SYSTEM,

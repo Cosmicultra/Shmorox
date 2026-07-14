@@ -1,5 +1,6 @@
 import type { AspectRatio, SocialPlatform } from "@/lib/types";
 import { ADVISORPILOT_KNOWLEDGE } from "@/lib/knowledge/advisorpilot";
+import { LAYOUT } from "./ad-design-system";
 import { generateQRDataUrl } from "./qr-compositor";
 
 const SAFE_ZONES: Record<AspectRatio, { top: number; bottom: number }> = {
@@ -98,7 +99,7 @@ export async function packageMarketingAsset(
   });
 
   if (logoImage) {
-    const logoH = Math.round(28 * scale);
+    const logoH = Math.round(LAYOUT.qrSize * LAYOUT.logoMinQrRatio * scale);
     const logoW = (logoImage.width / logoImage.height) * logoH;
     const logoX = Math.round(24 * scale);
     const logoY = Math.round(24 * scale) + safeZone.top * (scale / 2);
@@ -106,13 +107,13 @@ export async function packageMarketingAsset(
   }
 
   if (includeQR && qrUrl) {
-    const qrSize = Math.round(56 * scale);
-    const padding = Math.round(32 * scale);
+    const qrSize = Math.round(LAYOUT.qrSize * scale);
+    const padding = Math.round(40 * scale);
     const qrDataUrl = await generateQRDataUrl(qrUrl, qrSize * 2);
     const qrImage = await loadImage(qrDataUrl);
 
     const x = canvas.width - qrSize - padding;
-    const y = canvas.height - qrSize - padding - disclaimerHeight;
+    const y = padding + safeZone.top * (scale / 2);
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
     const bgPad = Math.round(6 * scale);

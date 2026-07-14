@@ -55,11 +55,36 @@ export function AdPreviewModal({ ad, ads, onClose, onNavigate }: AdPreviewModalP
     link.click();
   };
 
+  const isPortrait = ad?.aspectRatio === "9:16";
+  // Maximize ad area — keep chrome minimal so copy stays readable at scale.
+  const previewMaxHeight = "calc(94vh - 4.25rem)";
+  const previewWidth = isPortrait
+    ? `min(calc(${previewMaxHeight} * 9 / 16), 96vw)`
+    : `min(${previewMaxHeight}, 96vw, 1200px)`;
+  const previewFrameStyle = isPortrait
+    ? {
+        aspectRatio: "9/16" as const,
+        height: previewMaxHeight,
+        width: previewWidth,
+      }
+    : {
+        aspectRatio: "1/1" as const,
+        width: previewWidth,
+      };
+
   return (
-    <PresenceModal open={!!ad && !!ad.imageDataUrl} onClose={onClose} className="max-w-5xl">
+    <PresenceModal
+      open={!!ad && !!ad.imageDataUrl}
+      onClose={onClose}
+      overlayClassName="p-2 sm:p-3"
+      className="w-auto max-w-[98vw]"
+    >
       {ad?.imageDataUrl && (
-        <Card elevated className="flex max-h-[95vh] flex-col overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <Card elevated className="mx-auto flex w-fit max-w-full flex-col overflow-hidden">
+          <div
+            className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2 sm:px-4"
+            style={{ width: previewWidth }}
+          >
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="blue">{platformLabel}</Badge>
               <Badge variant="default">{ad.aspectRatio}</Badge>
@@ -82,38 +107,28 @@ export function AdPreviewModal({ ad, ads, onClose, onNavigate }: AdPreviewModalP
             </div>
           </div>
 
-          <div className="relative flex flex-1 items-center justify-center overflow-auto bg-muted p-6">
+          <div className="relative overflow-hidden bg-primary" style={previewFrameStyle}>
             {hasPrev && (
               <button
                 onClick={goPrev}
-                className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-surface p-2 shadow-elevated transition-colors hover:bg-muted"
+                className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-surface/95 p-2 shadow-elevated transition-colors hover:bg-muted"
                 aria-label="Previous ad"
               >
                 <ChevronLeft className="h-6 w-6 text-primary" />
               </button>
             )}
 
-            <div
-              className="flex max-h-[70vh] items-center justify-center"
-              style={{
-                maxWidth: ad.aspectRatio === "9:16" ? "min(400px, 50vw)" : "min(640px, 85vw)",
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={ad.imageDataUrl}
-                alt={`${platformLabel} ${ad.aspectRatio} ad preview`}
-                className="max-h-[70vh] w-full rounded-xl object-contain shadow-glow"
-                style={{
-                  aspectRatio: ad.aspectRatio === "9:16" ? "9/16" : "1/1",
-                }}
-              />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={ad.imageDataUrl}
+              alt={`${platformLabel} ${ad.aspectRatio} ad preview`}
+              className="block h-full w-full object-contain"
+            />
 
             {hasNext && (
               <button
                 onClick={goNext}
-                className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-surface p-2 shadow-elevated transition-colors hover:bg-muted"
+                className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-surface/95 p-2 shadow-elevated transition-colors hover:bg-muted"
                 aria-label="Next ad"
               >
                 <ChevronRight className="h-6 w-6 text-primary" />
@@ -121,11 +136,11 @@ export function AdPreviewModal({ ad, ads, onClose, onNavigate }: AdPreviewModalP
             )}
           </div>
 
-          <div className="border-t border-border px-5 py-4">
+          <div className="shrink-0 border-t border-border px-3 py-2 sm:px-4" style={{ width: previewWidth }}>
             <p className="font-medium text-primary">{ad.headline}</p>
-            <p className="mt-1 text-sm text-secondary">{ad.subhead}</p>
-            <p className="mt-2 font-mono text-xs text-secondary/70">
-              {ad.width}×{ad.height}px · Esc to close · Arrow keys to navigate
+            <p className="mt-0.5 text-sm text-secondary">{ad.subhead}</p>
+            <p className="mt-1 font-mono text-xs text-secondary/70">
+              {ad.width}×{ad.height}px · Esc · ← →
             </p>
           </div>
         </Card>

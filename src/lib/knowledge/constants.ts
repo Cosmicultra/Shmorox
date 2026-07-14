@@ -1,5 +1,6 @@
 export const ADVISORPILOT_BRAND_MARK = "AdvisorPilot™";
-export const ADVISORPILOT_DEMO_URL = "https://www.advisorpilot.ai/";
+export const ADVISORPILOT_DEMO_URL = "https://www.advisorpilot.ai/demo";
+export const ADVISORPILOT_POST_LINK_LABEL = "Book a Demo with AdvisorPilot";
 export const ADVISORPILOT_STANDARD_DISCLAIMER =
   "For professional workflow and discussion only. Not an offer, solicitation, or recommendation of securities or advisory services. AI assists workflow preparation, not investment advice.";
 

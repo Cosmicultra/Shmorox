@@ -1,5 +1,6 @@
 import type { ReactNode, CSSProperties } from "react";
 import { ELEVATION, FONT_BODY, FONT_MONO } from "@/lib/ad/ad-design-system";
+import { getPrimaryScreenshotForPillar } from "@/lib/ad/product-screenshots";
 
 /** AdvisorPilot product tokens (from AdvisorPilot/app/globals.css) */
 const AP = {
@@ -18,6 +19,8 @@ const AP = {
 interface ProductSceneProps {
   pillarId?: string;
   variant: "square" | "vertical";
+  /** Prefer real PNG screenshots when available (default true). */
+  useScreenshot?: boolean;
 }
 
 const WIZARD_STEPS = ["Statement Intake", "Holdings Confirmed", "Review Draft"];
@@ -519,10 +522,47 @@ const SCENES: Record<string, ReactNode> = {
   "compliance-posture": <ComplianceScene />,
 };
 
-export function ProductScene({ pillarId, variant }: ProductSceneProps) {
-  const scene = SCENES[pillarId ?? ""] ?? <ClientReviewDashboard />;
+function ScreenshotScene({ pillarId }: { pillarId?: string }) {
+  const shot = getPrimaryScreenshotForPillar(pillarId);
+  if (!shot) return null;
 
-  const perspective = variant === "square" ? "perspective(1400px) rotateY(-6deg) rotateX(1.5deg)" : "perspective(1200px) rotateY(-3deg)";
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={shot.path}
+        alt={shot.title}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          objectPosition: "center center",
+          borderRadius: 10,
+          boxShadow: ELEVATION.product,
+        }}
+      />
+    </div>
+  );
+}
+
+export function ProductScene({ pillarId, variant, useScreenshot = true }: ProductSceneProps) {
+  const screenshot = useScreenshot ? getPrimaryScreenshotForPillar(pillarId) : undefined;
+  const scene = screenshot ? (
+    <ScreenshotScene pillarId={pillarId} />
+  ) : (
+    SCENES[pillarId ?? ""] ?? <ClientReviewDashboard />
+  );
+
+  const useFlatScreenshot = Boolean(screenshot);
 
   return (
     <div
@@ -533,11 +573,10 @@ export function ProductScene({ pillarId, variant }: ProductSceneProps) {
         fontFamily: FONT_BODY,
       }}
     >
-      {/* Ambient glow behind product */}
       <div
         style={{
           position: "absolute",
-          inset: "10% 5% 5% 15%",
+          inset: useFlatScreenshot ? "0" : "10% 5% 5% 15%",
           background: "radial-gradient(ellipse at center, rgba(34, 81, 255, 0.08) 0%, transparent 70%)",
           pointerEvents: "none",
         }}
@@ -546,7 +585,11 @@ export function ProductScene({ pillarId, variant }: ProductSceneProps) {
         style={{
           position: "absolute",
           inset: 0,
-          transform: perspective,
+          transform: useFlatScreenshot
+            ? undefined
+            : variant === "square"
+              ? "perspective(1400px) rotateY(-6deg) rotateX(1.5deg)"
+              : "perspective(1200px) rotateY(-3deg)",
           transformOrigin: variant === "square" ? "left center" : "center center",
         }}
       >

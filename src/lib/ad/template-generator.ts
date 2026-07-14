@@ -2,6 +2,7 @@ import { generateId } from "../utils";
 import { ADVISORPILOT_KNOWLEDGE, getPillarById } from "../knowledge/advisorpilot";
 import type { AspectRatio, GeneratedAd, SocialPlatform } from "../types";
 import { SOCIAL_PLATFORMS } from "../types";
+import { enrichGeneratedAd } from "./ad-creative-content";
 import { getLayoutForPillar } from "./visual-config";
 import {
   AD_DIMENSIONS,
@@ -60,19 +61,21 @@ export function generateAdsFromTemplates(input: AdGenerationInput): GeneratedAd[
       validateCreative(headline, subhead, cta, aspectRatio);
       const dims = AD_DIMENSIONS[aspectRatio];
 
-      ads.push({
-        id: generateId(),
-        platform,
-        aspectRatio,
-        contentPillarId: input.contentPillarId,
-        layoutVariant,
-        headline,
-        subhead,
-        cta,
-        disclaimer: sanitizeNoEmDash(ADVISORPILOT_KNOWLEDGE.standardDisclaimer),
-        width: dims.width,
-        height: dims.height,
-      });
+      ads.push(
+        enrichGeneratedAd({
+          id: generateId(),
+          platform,
+          aspectRatio,
+          contentPillarId: input.contentPillarId,
+          layoutVariant,
+          headline,
+          subhead,
+          cta,
+          disclaimer: sanitizeNoEmDash(ADVISORPILOT_KNOWLEDGE.standardDisclaimer),
+          width: dims.width,
+          height: dims.height,
+        })
+      );
     }
   }
 

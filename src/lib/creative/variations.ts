@@ -18,7 +18,8 @@ import {
 
 export async function generateConceptVariations(
   baseBrief: CreativeBrief,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  contentPillarId?: string
 ): Promise<{
   variations: ConceptVariation[];
   archetypeByStyle: Map<ConceptStyle, LayoutArchetypeId>;
@@ -33,7 +34,7 @@ export async function generateConceptVariations(
       archetypeByStyle.set(style, archetype);
 
       onProgress?.(`Developing ${strategy.name} strategy with ${archetype} layout…`);
-      const brief = await createConceptVariation(baseBrief, style, archetype);
+      const brief = await createConceptVariation(baseBrief, style, archetype, contentPillarId);
 
       return {
         style,
@@ -113,14 +114,19 @@ export function selectStrongestConcept(
 
 export async function runVariationPhase(
   baseBrief: CreativeBrief,
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  contentPillarId?: string
 ): Promise<{
   variations: ConceptVariation[];
   selected: ConceptVariation;
   selectionRationale: string;
   visualDiversityReport: VisualDiversityReport;
 }> {
-  const { variations: rawVariations } = await generateConceptVariations(baseBrief, onProgress);
+  const { variations: rawVariations } = await generateConceptVariations(
+    baseBrief,
+    onProgress,
+    contentPillarId
+  );
 
   onProgress?.("Checking layout archetype diversity (rule-based, no AI)…");
   const diversityReport = checkArchetypeDiversity(rawVariations);

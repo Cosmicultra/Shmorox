@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type ReactNode } from "react";
+import { forwardRef, type CSSProperties, type ReactNode } from "react";
 import { ADVISORPILOT_KNOWLEDGE, getPillarById } from "@/lib/knowledge/advisorpilot";
 import type { AspectRatio } from "@/lib/types";
 import { BRAND_TOKENS as T } from "@/lib/tokens";
@@ -15,7 +15,20 @@ import {
   TYPE,
   WAVE_OVERLAY,
 } from "@/lib/ad/ad-design-system";
-import { ProductScene } from "@/components/ad-card/ProductScene";
+import { AdIcon, FeatureIconCircle } from "@/components/ad-card/AdIcons";
+import { AssetCompositor } from "@/components/ad-card/AssetCompositor";
+import { AD_TEMPLATE_REGISTRY, getPlatformTweak, getTemplateIdForPillar, type AdTemplateId } from "@/lib/ad/ad-template-registry";
+import { resolveSupportingLine } from "@/lib/ad/ad-creative-content";
+import { computeLogoSizing, type LogoSizingResult } from "@/lib/ad/logo-sizing";
+import type { SocialPlatform } from "@/lib/types";
+import {
+  FOOTER_TRUST,
+  getFeaturesForPillar,
+  getStepsForPillar,
+  getSupportingLine,
+  usesStepList,
+  type LayoutVariant,
+} from "@/lib/ad/visual-config";
 
 export interface AdCardProps {
   headline: string;
@@ -24,7 +37,9 @@ export interface AdCardProps {
   disclaimer: string;
   aspectRatio: AspectRatio;
   contentPillarId?: string;
-  layoutVariant?: string;
+  layoutVariant?: LayoutVariant | string;
+  templateId?: AdTemplateId;
+  platform?: SocialPlatform;
   showQR?: boolean;
   qrDataUrl?: string;
 }
@@ -46,7 +61,7 @@ function Canvas({ children }: { children: ReactNode }) {
         style={{
           position: "absolute",
           left: 0,
-          bottom: 0,
+          bottom: LAYOUT.footerHeight,
           width: 400,
           height: 400,
           backgroundImage: WAVE_OVERLAY,
@@ -61,15 +76,108 @@ function Canvas({ children }: { children: ReactNode }) {
   );
 }
 
-function Logo() {
+function Logo({ sizing }: { sizing: LogoSizingResult }) {
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
       src={ADVISORPILOT_KNOWLEDGE.logoPath}
       alt={ADVISORPILOT_KNOWLEDGE.brandMark}
-      width={220}
-      style={{ height: "auto", display: "block", maxHeight: 96, objectFit: "contain", objectPosition: "left top" }}
+      width={sizing.maxWidth}
+      style={{
+        height: "auto",
+        display: "block",
+        maxWidth: sizing.maxWidth,
+        maxHeight: sizing.maxHeight,
+        width: "100%",
+        objectFit: "contain",
+        objectPosition: "left top",
+        background: "transparent",
+      }}
     />
+  );
+}
+
+function buildLogoSizing({
+  aspectRatio,
+  headline,
+  subhead,
+  supporting,
+  hasAccentBar,
+  hasStepList,
+  qrDataUrl,
+}: {
+  aspectRatio: AspectRatio;
+  headline: string;
+  subhead: string;
+  supporting: string;
+  hasAccentBar?: boolean;
+  hasStepList?: boolean;
+  qrDataUrl?: string;
+}): LogoSizingResult {
+  return computeLogoSizing({
+    aspectRatio,
+    headlineLineCount: headline.split("\n").filter(Boolean).length,
+    subheadLength: subhead.length,
+    supportingLength: supporting.length,
+    hasFeatureIcons: !hasStepList,
+    hasStepList,
+    hasAccentBar,
+    qrPresent: Boolean(qrDataUrl),
+  });
+}
+
+function QrCta({
+  qrDataUrl,
+  compact,
+  qrSize,
+}: {
+  qrDataUrl?: string;
+  compact?: boolean;
+  qrSize?: number;
+}) {
+  if (!qrDataUrl) return null;
+
+  const size = qrSize ?? (compact ? Math.round(LAYOUT.qrSize * 0.85) : LAYOUT.qrSize);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        gap: SPACE.sm,
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          background: T.white,
+          padding: 6,
+          border: `1px solid ${T.border}`,
+          boxShadow: ELEVATION.raised,
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={qrDataUrl}
+          alt="Scan to request a demo"
+          width={size}
+          height={size}
+          style={{ display: "block" }}
+        />
+      </div>
+      <span
+        style={{
+          fontSize: TYPE.label.size,
+          fontWeight: TYPE.label.weight,
+          letterSpacing: TYPE.label.tracking,
+          textTransform: "uppercase",
+          color: T.slate,
+        }}
+      >
+        Request a demo
+      </span>
+    </div>
   );
 }
 
@@ -77,12 +185,15 @@ function EditorialHeadline({
   lines,
   highlightWord,
   size,
+  fontSizePx,
 }: {
   lines: string[];
   highlightWord?: string;
   size: "square" | "vertical";
+  fontSizePx?: number;
 }) {
   const spec = size === "vertical" ? TYPE.displayLg : TYPE.displayMd;
+  const fontSize = fontSizePx ?? spec.size;
 
   function renderLine(line: string) {
     if (!highlightWord) return line;
@@ -108,7 +219,7 @@ function EditorialHeadline({
           style={{
             display: "block",
             fontFamily: FONT_DISPLAY,
-            fontSize: spec.size,
+            fontSize: `${fontSize}px`,
             lineHeight: spec.lineHeight,
             fontWeight: spec.weight,
             letterSpacing: spec.tracking,
@@ -122,38 +233,91 @@ function EditorialHeadline({
   );
 }
 
-function WorkflowSteps({ steps }: { steps: { title: string; description: string }[] }) {
-  const icons = ["↑", "◎", "✓"] as const;
+function FeatureIconRow({
+  pillarId,
+  layout = "row",
+}: {
+  pillarId?: string;
+  layout?: "row" | "grid";
+}) {
+  const features = getFeaturesForPillar(pillarId);
+  const align = layout === "grid" ? "left" : "left";
+
+  if (layout === "grid") {
+    return (
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, 120px)",
+          gap: SPACE.md,
+          marginTop: SPACE.lg,
+          justifyContent: "start",
+        }}
+      >
+        {features.map((feature) => (
+          <FeatureIconCircle
+            key={feature.label}
+            icon={feature.icon}
+            label={feature.label}
+            align={align}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: SPACE.md, marginTop: SPACE.lg }}>
-      {steps.map((step, i) => (
-        <div key={step.title} style={{ display: "flex", alignItems: "flex-start", gap: SPACE.md }}>
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        justifyContent: "flex-start",
+        gap: SPACE.md,
+        marginTop: SPACE.lg,
+        maxWidth: LAYOUT.copyColumn,
+      }}
+    >
+      {features.map((feature) => (
+        <FeatureIconCircle
+          key={feature.label}
+          icon={feature.icon}
+          label={feature.label}
+          align={align}
+        />
+      ))}
+    </div>
+  );
+}
+
+function StepList({ pillarId }: { pillarId?: string }) {
+  const steps = getStepsForPillar(pillarId);
+  if (!steps?.length) return null;
+
+  return (
+    <div style={{ marginTop: SPACE.lg, display: "flex", flexDirection: "column", gap: SPACE.md }}>
+      {steps.map((step) => (
+        <div key={step.title} style={{ display: "flex", gap: SPACE.md, alignItems: "flex-start" }}>
           <div
             style={{
-              width: 36,
-              height: 36,
-              flexShrink: 0,
+              width: 40,
+              height: 40,
+              borderRadius: 10,
               background: "rgba(34, 81, 255, 0.08)",
-              border: `1px solid rgba(34, 81, 255, 0.12)`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 14,
-              color: T.blue,
-              fontWeight: 600,
+              flexShrink: 0,
             }}
           >
-            {icons[i] ?? "•"}
+            <AdIcon icon={step.icon} size={20} color={T.blue} />
           </div>
           <div>
             <div
               style={{
                 fontSize: TYPE.stepTitle.size,
-                lineHeight: TYPE.stepTitle.lineHeight,
                 fontWeight: TYPE.stepTitle.weight,
+                lineHeight: TYPE.stepTitle.lineHeight,
                 color: T.navy,
-                letterSpacing: TYPE.stepTitle.tracking,
               }}
             >
               {step.title}
@@ -175,96 +339,59 @@ function WorkflowSteps({ steps }: { steps: { title: string; description: string 
   );
 }
 
-function CtaRow({ cta, qrDataUrl }: { cta: string; qrDataUrl?: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: SPACE.lg, marginTop: SPACE.xl }}>
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: SPACE.sm,
-          background: T.blue,
-          color: T.white,
-          padding: `${SPACE.md}px ${SPACE.xl}px`,
-          fontSize: TYPE.cta.size,
-          fontWeight: TYPE.cta.weight,
-          letterSpacing: TYPE.cta.tracking,
-          boxShadow: ELEVATION.cta,
-        }}
-      >
-        <span>{cta}</span>
-        <span style={{ fontSize: 18, lineHeight: 1 }}>→</span>
-      </div>
-      {qrDataUrl && (
-        <div style={{ display: "flex", alignItems: "center", gap: SPACE.sm, opacity: 0.85 }}>
-          <div
-            style={{
-              background: T.white,
-              padding: 4,
-              border: `1px solid ${T.border}`,
-              boxShadow: ELEVATION.soft,
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrDataUrl} alt="Scan to request a demo" width={56} height={56} style={{ display: "block" }} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function FeatureBlock({
+  pillarId,
+  iconLayout = "row",
+}: {
+  pillarId?: string;
+  iconLayout?: "row" | "grid";
+}) {
+  if (usesStepList(pillarId)) {
+    return <StepList pillarId={pillarId} />;
+  }
+  return <FeatureIconRow pillarId={pillarId} layout={iconLayout} />;
 }
 
-function TrustBanner() {
+function TrustFooter({ style }: { style?: CSSProperties }) {
   return (
     <div
       style={{
         display: "flex",
         alignItems: "center",
-        gap: SPACE.md,
+        justifyContent: "center",
+        gap: SPACE.xl,
         background: SURFACE.trustBar,
-        padding: `${SPACE.md}px ${SPACE.lg}px`,
-        maxWidth: 520,
+        height: LAYOUT.footerHeight,
+        padding: `0 ${SPACE.xl}px`,
+        zIndex: 30,
+        ...style,
       }}
     >
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          flexShrink: 0,
-          border: `1.5px solid rgba(255,255,255,0.35)`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 14,
-          color: T.white,
-        }}
-      >
-        ◆
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: TYPE.trust.size,
-            lineHeight: TYPE.trust.lineHeight,
-            color: "#E8EDF2",
-            fontWeight: TYPE.trust.weight,
-          }}
-        >
-          {ADVISORPILOT_KNOWLEDGE.trustBanner}
+      {FOOTER_TRUST.map((item, i) => (
+        <div key={item.label} style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
+          {i > 0 && (
+            <div
+              style={{
+                width: 1,
+                height: 20,
+                background: "rgba(255,255,255,0.2)",
+                marginRight: SPACE.md,
+              }}
+            />
+          )}
+          <AdIcon icon={item.icon} size={16} color={T.blue} />
+          <span
+            style={{
+              fontSize: TYPE.trust.size,
+              fontWeight: TYPE.trust.weight,
+              color: "#E8EDF2",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.label}
+          </span>
         </div>
-      </div>
-      <div
-        style={{
-          fontSize: 9,
-          fontWeight: 600,
-          letterSpacing: "0.14em",
-          color: "rgba(255,255,255,0.55)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        ANALYZE. INSIGHT. ADVISE.{" "}
-        <span style={{ color: T.blue }}>GROW.</span>
-      </div>
+      ))}
     </div>
   );
 }
@@ -278,7 +405,6 @@ function LegalLine({ text }: { text: string }) {
         lineHeight: TYPE.legal.lineHeight,
         color: T.slateLight,
         opacity: 0.55,
-        maxWidth: 400,
       }}
     >
       {text}
@@ -286,21 +412,162 @@ function LegalLine({ text }: { text: string }) {
   );
 }
 
-function SquareCard({
+function LeftCopyStack({
+  contentPillarId,
+  headline,
+  subhead,
+  supporting,
+  qrDataUrl,
+  accentBar,
+  headlineSize = "square",
+  logoSizing,
+  platform,
+  templateId,
+  iconLayout = "row",
+}: {
+  contentPillarId?: string;
+  headline: string;
+  subhead: string;
+  supporting: string;
+  qrDataUrl?: string;
+  accentBar?: boolean;
+  headlineSize?: "square" | "vertical";
+  logoSizing: LogoSizingResult;
+  platform?: SocialPlatform;
+  templateId?: AdTemplateId;
+  iconLayout?: "row" | "grid";
+}) {
+  const pillar = contentPillarId ? getPillarById(contentPillarId) : undefined;
+  const lines = headline.split("\n").filter(Boolean);
+  const sparseHeader = logoSizing.contentDensity < 0.55;
+  const platformTweak =
+    platform && templateId
+      ? getPlatformTweak(AD_TEMPLATE_REGISTRY[templateId], platform)
+      : {};
+  const headlineScale = platformTweak.headlineScale ?? 1;
+  const displaySpec =
+    headlineSize === "vertical" ? TYPE.displayLg : TYPE.displayMd;
+  const scaledHeadlineSize = Math.round(displaySpec.size * headlineScale);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        paddingRight: SPACE.md,
+        zIndex: 20,
+      }}
+    >
+      <div
+        style={{
+          ...(sparseHeader ? { minHeight: logoSizing.headerMinHeight } : {}),
+          marginBottom: SPACE.md,
+        }}
+      >
+        <Logo sizing={logoSizing} />
+      </div>
+
+      {accentBar && (
+        <div
+          style={{
+            width: 48,
+            height: 3,
+            background: T.blue,
+            marginBottom: SPACE.lg,
+          }}
+        />
+      )}
+
+      <EditorialHeadline
+        lines={lines}
+        highlightWord={pillar?.highlightWord}
+        size={headlineSize}
+        fontSizePx={scaledHeadlineSize}
+      />
+
+      <p
+        style={{
+          marginTop: SPACE.lg,
+          fontSize: headlineSize === "vertical" ? TYPE.bodyLg.size : TYPE.bodyMd.size,
+          lineHeight: headlineSize === "vertical" ? TYPE.bodyLg.lineHeight : TYPE.bodyMd.lineHeight,
+          color: T.slate,
+        }}
+      >
+        {subhead}
+      </p>
+
+      <FeatureBlock pillarId={contentPillarId} iconLayout={iconLayout} />
+
+      {supporting ? (
+        <p
+          style={{
+            marginTop: SPACE.lg,
+            fontSize: TYPE.bodySm.size,
+            lineHeight: TYPE.bodySm.lineHeight,
+            color: T.slate,
+            fontWeight: 500,
+          }}
+        >
+          {supporting}
+        </p>
+      ) : null}
+
+      <div
+        style={{
+          marginTop: SPACE.xl,
+          paddingBottom: SPACE.xxl,
+          marginBottom: headlineSize === "vertical" ? SPACE.lg : 0,
+        }}
+      >
+        <QrCta
+          qrDataUrl={qrDataUrl}
+          compact={headlineSize === "vertical" || platformTweak.compactFooter}
+          qrSize={platformTweak.qrSize}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SplitLayoutCard({
   headline: h,
   subhead: s,
-  cta,
   disclaimer: d,
   contentPillarId,
   qrDataUrl,
-}: Omit<AdCardProps, "aspectRatio" | "layoutVariant" | "showQR">) {
-  const pillar = contentPillarId ? getPillarById(contentPillarId) : undefined;
+  variant,
+  templateId,
+  platform,
+}: {
+  headline: string;
+  subhead: string;
+  disclaimer: string;
+  contentPillarId?: string;
+  qrDataUrl?: string;
+  variant: LayoutVariant;
+  templateId: AdTemplateId;
+  platform?: SocialPlatform;
+}) {
   const headline = sanitizeNoEmDash(h);
   const subhead = sanitizeNoEmDash(s);
   const disclaimer = sanitizeNoEmDash(d);
-  const ctaText = sanitizeNoEmDash(cta);
-  const lines = headline.split("\n").filter(Boolean);
-  const steps = pillar?.workflowSteps ?? ADVISORPILOT_KNOWLEDGE.defaultWorkflowSteps;
+  const templateDef = AD_TEMPLATE_REGISTRY[templateId];
+  const rawSupporting = getSupportingLine(contentPillarId);
+  const supporting = resolveSupportingLine(subhead, rawSupporting, {
+    aspectRatio: "1:1",
+    proofType: templateDef.copySchema.proofType,
+  });
+  const accentBar = templateDef?.copySchema.accentBar ?? variant === "split-clarity";
+  const stepList = usesStepList(contentPillarId);
+  const logoSizing = buildLogoSizing({
+    aspectRatio: "1:1",
+    headline,
+    subhead,
+    supporting,
+    hasAccentBar: accentBar,
+    hasStepList: stepList,
+    qrDataUrl,
+  });
 
   return (
     <Canvas>
@@ -308,111 +575,233 @@ function SquareCard({
         style={{
           width: LAYOUT.squareWidth,
           height: LAYOUT.squareHeight,
-          padding: SPACE.hero,
           display: "grid",
-          gridTemplateRows: "auto 1fr auto",
+          gridTemplateRows: `1fr ${LAYOUT.footerHeight}px auto`,
           gridTemplateColumns: `${LAYOUT.copyColumn}px 1fr`,
-          columnGap: SPACE.lg,
+          columnGap: SPACE.md,
+          padding: `${SPACE.xl}px ${SPACE.xl}px 0`,
           boxSizing: "border-box",
         }}
       >
-        <div style={{ gridColumn: "1 / -1", marginBottom: SPACE.lg }}>
-          <Logo />
-        </div>
-
-        <div
-          style={{
-            gridColumn: 1,
-            gridRow: 2,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            zIndex: 20,
-            paddingRight: SPACE.sm,
-          }}
-        >
-          <EditorialHeadline lines={lines} highlightWord={pillar?.highlightWord} size="square" />
-          <p
-            style={{
-              marginTop: SPACE.lg,
-              fontSize: TYPE.bodyMd.size,
-              lineHeight: TYPE.bodyMd.lineHeight,
-              color: T.slate,
-              maxWidth: 400,
-            }}
-          >
-            {subhead}
-          </p>
-          <WorkflowSteps steps={steps} />
-          <CtaRow cta={ctaText} qrDataUrl={qrDataUrl} />
+        <div style={{ gridColumn: 1, gridRow: 1, minHeight: 0 }}>
+          <LeftCopyStack
+            contentPillarId={contentPillarId}
+            headline={headline}
+            subhead={subhead}
+            supporting={supporting}
+            qrDataUrl={qrDataUrl}
+            accentBar={accentBar}
+            logoSizing={logoSizing}
+            templateId={templateId}
+            platform={platform}
+          />
         </div>
 
         <div
           style={{
             gridColumn: 2,
-            gridRow: 2,
+            gridRow: 1,
             position: "relative",
             minHeight: 0,
             zIndex: 10,
+            marginRight: -LAYOUT.productBleed / 2,
           }}
         >
-          <div
-            style={{
-              position: "absolute",
-              top: -SPACE.md,
-              left: -SPACE.sm,
-              right: -LAYOUT.productBleed,
-              bottom: -SPACE.lg,
-            }}
-          >
-            <ProductScene pillarId={contentPillarId} variant="square" />
-          </div>
+          <AssetCompositor
+            templateId={templateId}
+            pillarId={contentPillarId}
+            variant="square"
+          />
         </div>
+
+        <TrustFooter style={{ gridColumn: "1 / -1", gridRow: 2 }} />
 
         <div
           style={{
             gridColumn: 1,
             gridRow: 3,
-            alignSelf: "end",
-            paddingTop: SPACE.lg,
+            padding: `${SPACE.sm}px 0 ${SPACE.md}px`,
             zIndex: 20,
           }}
         >
           <LegalLine text={disclaimer} />
-        </div>
-        <div
-          style={{
-            gridColumn: 2,
-            gridRow: 3,
-            display: "flex",
-            justifyContent: "flex-end",
-            alignSelf: "end",
-            paddingTop: SPACE.lg,
-            zIndex: 20,
-          }}
-        >
-          <TrustBanner />
         </div>
       </div>
     </Canvas>
   );
 }
 
-function VerticalCard({
+function DiagonalGrowthCard({
   headline: h,
   subhead: s,
-  cta,
   disclaimer: d,
   contentPillarId,
   qrDataUrl,
-}: Omit<AdCardProps, "aspectRatio" | "layoutVariant" | "showQR">) {
-  const pillar = contentPillarId ? getPillarById(contentPillarId) : undefined;
+  templateId,
+  platform,
+}: {
+  headline: string;
+  subhead: string;
+  disclaimer: string;
+  contentPillarId?: string;
+  qrDataUrl?: string;
+  templateId: AdTemplateId;
+  platform?: SocialPlatform;
+}) {
   const headline = sanitizeNoEmDash(h);
   const subhead = sanitizeNoEmDash(s);
   const disclaimer = sanitizeNoEmDash(d);
-  const ctaText = sanitizeNoEmDash(cta);
-  const lines = headline.split("\n").filter(Boolean);
-  const steps = pillar?.workflowSteps ?? ADVISORPILOT_KNOWLEDGE.defaultWorkflowSteps;
+  const templateDef = AD_TEMPLATE_REGISTRY[templateId];
+  const rawSupporting = getSupportingLine(contentPillarId);
+  const supporting = resolveSupportingLine(subhead, rawSupporting, {
+    aspectRatio: "1:1",
+    proofType: templateDef.copySchema.proofType,
+  });
+  const stepList = usesStepList(contentPillarId);
+  const logoSizing = buildLogoSizing({
+    aspectRatio: "1:1",
+    headline,
+    subhead,
+    supporting,
+    hasStepList: stepList,
+    qrDataUrl,
+  });
+
+  return (
+    <Canvas>
+      <div
+        style={{
+          width: LAYOUT.squareWidth,
+          height: LAYOUT.squareHeight,
+          display: "grid",
+          gridTemplateRows: `1fr ${LAYOUT.footerHeight}px auto`,
+          gridTemplateColumns: `${LAYOUT.copyColumn}px 1fr`,
+          columnGap: 0,
+          padding: `${SPACE.xl}px ${SPACE.xl}px 0`,
+          boxSizing: "border-box",
+        }}
+      >
+        <div style={{ gridColumn: 1, gridRow: 1, minHeight: 0, zIndex: 20 }}>
+          <LeftCopyStack
+            contentPillarId={contentPillarId}
+            headline={headline}
+            subhead={subhead}
+            supporting={supporting}
+            qrDataUrl={qrDataUrl}
+            logoSizing={logoSizing}
+            templateId={templateId}
+            platform={platform}
+          />
+        </div>
+
+        <div
+          style={{
+            gridColumn: 2,
+            gridRow: 1,
+            position: "relative",
+            minHeight: 0,
+            zIndex: 10,
+          }}
+        >
+          <AssetCompositor
+            templateId={templateId}
+            pillarId={contentPillarId}
+            variant="square"
+          />
+        </div>
+
+        <TrustFooter style={{ gridColumn: "1 / -1", gridRow: 2 }} />
+
+        <div
+          style={{
+            gridColumn: 1,
+            gridRow: 3,
+            padding: `${SPACE.sm}px 0 ${SPACE.md}px`,
+            zIndex: 20,
+          }}
+        >
+          <LegalLine text={disclaimer} />
+        </div>
+      </div>
+    </Canvas>
+  );
+}
+
+function SquareCard({
+  headline: h,
+  subhead: s,
+  disclaimer: d,
+  contentPillarId,
+  layoutVariant,
+  templateId: propTemplateId,
+  platform,
+  qrDataUrl,
+}: Omit<AdCardProps, "aspectRatio" | "showQR" | "cta">) {
+  const headline = sanitizeNoEmDash(h);
+  const subhead = sanitizeNoEmDash(s);
+  const disclaimer = sanitizeNoEmDash(d);
+  const variant = (layoutVariant as LayoutVariant) ?? "split-office";
+  const templateId = propTemplateId ?? getTemplateIdForPillar(contentPillarId);
+
+  if (variant === "diagonal-growth" || templateId === "diagonal-growth") {
+    return (
+      <DiagonalGrowthCard
+        headline={headline}
+        subhead={subhead}
+        disclaimer={disclaimer}
+        contentPillarId={contentPillarId}
+        qrDataUrl={qrDataUrl}
+        templateId={templateId}
+        platform={platform}
+      />
+    );
+  }
+
+  return (
+    <SplitLayoutCard
+      headline={headline}
+      subhead={subhead}
+      disclaimer={disclaimer}
+      contentPillarId={contentPillarId}
+      qrDataUrl={qrDataUrl}
+      variant={variant}
+      templateId={templateId}
+      platform={platform}
+    />
+  );
+}
+
+function VerticalCard({
+  headline: h,
+  subhead: s,
+  disclaimer: d,
+  contentPillarId,
+  layoutVariant,
+  templateId: propTemplateId,
+  platform,
+  qrDataUrl,
+}: Omit<AdCardProps, "aspectRatio" | "showQR" | "cta">) {
+  const headline = sanitizeNoEmDash(h);
+  const subhead = sanitizeNoEmDash(s);
+  const disclaimer = sanitizeNoEmDash(d);
+  const variant = (layoutVariant as LayoutVariant) ?? "split-office";
+  const templateId = propTemplateId ?? getTemplateIdForPillar(contentPillarId);
+  const templateDef = AD_TEMPLATE_REGISTRY[templateId];
+  const rawSupporting = getSupportingLine(contentPillarId);
+  const supporting = resolveSupportingLine(subhead, rawSupporting, {
+    aspectRatio: "9:16",
+    proofType: templateDef.copySchema.proofType,
+  });
+  const stepList = usesStepList(contentPillarId);
+  const logoSizing = buildLogoSizing({
+    aspectRatio: "9:16",
+    headline,
+    subhead,
+    supporting,
+    hasStepList: stepList,
+    qrDataUrl,
+  });
+  const instagramSafe = platform === "instagram";
 
   return (
     <Canvas>
@@ -420,45 +809,54 @@ function VerticalCard({
         style={{
           width: LAYOUT.verticalWidth,
           height: LAYOUT.verticalHeight,
-          padding: `${SPACE.canvas}px ${SPACE.hero}px ${SPACE.hero}px`,
           display: "grid",
-          gridTemplateRows: "auto auto auto 1fr auto auto",
+          gridTemplateRows: `auto minmax(520px, 1fr) ${LAYOUT.footerHeight}px auto`,
+          padding: `0 ${SPACE.xxl}px 0`,
           boxSizing: "border-box",
         }}
       >
-        <Logo />
-
-        <div style={{ marginTop: SPACE.xxxl, maxWidth: 880, zIndex: 20 }}>
-          <EditorialHeadline lines={lines} highlightWord={pillar?.highlightWord} size="vertical" />
-          <p
-            style={{
-              marginTop: SPACE.xl,
-              fontSize: TYPE.bodyLg.size,
-              lineHeight: TYPE.bodyLg.lineHeight,
-              color: T.slate,
-              maxWidth: 720,
-            }}
-          >
-            {subhead}
-          </p>
+        <div
+          style={{
+            zIndex: 20,
+            maxWidth: LAYOUT.copyColumn,
+            paddingTop: instagramSafe ? 120 : SPACE.xl,
+            paddingBottom: 40,
+          }}
+        >
+          <LeftCopyStack
+            contentPillarId={contentPillarId}
+            headline={headline}
+            subhead={subhead}
+            supporting={supporting}
+            qrDataUrl={qrDataUrl}
+            accentBar={templateDef?.copySchema.accentBar ?? variant === "split-clarity"}
+            headlineSize="vertical"
+            logoSizing={logoSizing}
+            templateId={templateId}
+            platform={platform}
+            iconLayout="grid"
+          />
         </div>
 
-        <div style={{ marginTop: SPACE.xl, zIndex: 20 }}>
-          <WorkflowSteps steps={steps} />
-          <CtaRow cta={ctaText} qrDataUrl={qrDataUrl} />
+        <div
+          style={{
+            position: "relative",
+            minHeight: 520,
+            overflow: "hidden",
+            marginTop: SPACE.md,
+            zIndex: 10,
+          }}
+        >
+          <AssetCompositor
+            templateId={templateId}
+            pillarId={contentPillarId}
+            variant="vertical"
+          />
         </div>
 
-        <div style={{ position: "relative", marginTop: SPACE.xl, minHeight: 0 }}>
-          <div style={{ position: "absolute", inset: 0, top: 0, bottom: -SPACE.md }}>
-            <ProductScene pillarId={contentPillarId} variant="vertical" />
-          </div>
-        </div>
+        <TrustFooter />
 
-        <div style={{ marginTop: SPACE.xl, zIndex: 20 }}>
-          <TrustBanner />
-        </div>
-
-        <div style={{ marginTop: SPACE.lg, zIndex: 20 }}>
+        <div style={{ padding: `${SPACE.sm}px 0 ${SPACE.lg}px`, zIndex: 20 }}>
           <LegalLine text={disclaimer} />
         </div>
       </div>
@@ -467,15 +865,27 @@ function VerticalCard({
 }
 
 export const AdCardTemplate = forwardRef<HTMLDivElement, AdCardProps>(function AdCardTemplate(
-  { aspectRatio, qrDataUrl, ...props },
+  { aspectRatio, qrDataUrl, layoutVariant, templateId, platform, ...props },
   ref
 ) {
   return (
     <div ref={ref}>
       {aspectRatio === "9:16" ? (
-        <VerticalCard {...props} qrDataUrl={qrDataUrl} />
+        <VerticalCard
+          {...props}
+          layoutVariant={layoutVariant}
+          templateId={templateId}
+          platform={platform}
+          qrDataUrl={qrDataUrl}
+        />
       ) : (
-        <SquareCard {...props} qrDataUrl={qrDataUrl} />
+        <SquareCard
+          {...props}
+          layoutVariant={layoutVariant}
+          templateId={templateId}
+          platform={platform}
+          qrDataUrl={qrDataUrl}
+        />
       )}
     </div>
   );

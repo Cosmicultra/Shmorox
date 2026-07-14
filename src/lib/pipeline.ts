@@ -5,7 +5,8 @@ import { sanitizeNoEmDash } from "./ad/content-guardrails";
 import { generateAds } from "./ad/generator";
 import { campaignPatchFromCheckpoint, checkpointFromCampaign, needsCreativeResume } from "./creative/checkpoint";
 import { fixAdCopy, buildClaimsText } from "./ad/creative-fixer";
-import { renderAllAds, renderAdsForPipeline } from "./ad/image-renderer";
+import { lintAdBatch } from "./ad/ad-layout-linter";
+import { renderAllAds, renderAdsForPipeline, invalidateAdRenderCache } from "./ad/image-renderer";
 import { getHashtagsForPlatforms } from "./ad/hashtags";
 import { generateCaptionsForPlatforms } from "./ad/caption-generator";
 import type {
@@ -167,10 +168,17 @@ async function runLegalFixLoop(
         subheadAfter: fixed.subhead,
       });
 
-      fixedAds.push({ ...ad, ...fixed });
+      fixedAds.push({ ...ad, ...fixed, imageDataUrl: undefined, renderedLayoutVersion: undefined });
     }
 
-    currentAds = await renderAllAds(fixedAds, true, qrUrl ?? buildDemoUrl("social", campaignId));
+    await invalidateAdRenderCache(
+      campaignId,
+      fixedAds.map((ad) => ad.id)
+    );
+    currentAds = await renderAllAds(fixedAds, true, qrUrl ?? buildDemoUrl("social", campaignId), {
+      campaignId,
+      force: true,
+    });
     callbacks.onCampaignUpdate({ ads: currentAds, fixHistory: history });
   }
 
@@ -219,8 +227,21 @@ async function runPackagingPhase(
 
   const allHashtags = [...new Set(Object.values(hashtagsByPlatform).flat())];
 
+  const lintResult = lintAdBatch(ads);
+  if (!lintResult.passed) {
+    const hardIssues = lintResult.issues.filter((i) => i.severity === "error");
+    callbacks.onProgress(
+      `Layout QA: ${hardIssues.length} issue(s) before export — proceeding with warnings logged.`,
+      "packaging"
+    );
+    console.warn("[ad-layout-linter]", lintResult.issues);
+  }
+
   callbacks.onProgress("Adding QR codes to ad cards…", "packaging");
-  const packagedAds = await renderAdsForPipeline(ads, true, qrUrl);
+  const packagedAds =
+    ads.length > 0 && ads.every((ad) => ad.imageDataUrl)
+      ? ads
+      : await renderAdsForPipeline(ads, true, qrUrl, { campaignId });
 
   callbacks.onProgress("Campaign package ready for posting!", "ready_to_post");
   callbacks.onCampaignUpdate({
@@ -306,13 +327,9 @@ export async function runCampaignPipeline(
     generationCost: creativeResult.generationCost,
   });
 
-  const needsTemplateRender = ads.some((ad) => !ad.creativeAssetUrl && !ad.imageDataUrl);
-  if (needsTemplateRender) {
-    callbacks.onProgress("Rendering ad card visuals from template…", "generating");
-    ads = await renderAllAds(ads, false, qrUrl);
-  } else {
-    callbacks.onProgress("AI-generated visuals ready…", "generating");
-  }
+  const needsTemplateRender = ads.some((ad) => !ad.imageDataUrl);
+  callbacks.onProgress("Rendering ad card visuals from template…", "generating");
+  ads = await renderAllAds(ads, true, qrUrl, { campaignId });
 
   callbacks.onCampaignUpdate({ ads });
 
@@ -474,19 +491,16 @@ export async function resumeCampaignPipeline(
       ads,
     });
 
-    const needsTemplateRender = ads.some((ad) => !ad.creativeAssetUrl && !ad.imageDataUrl);
-    if (needsTemplateRender) {
-      callbacks.onProgress("Rendering ad card visuals from template…", "generating");
-      ads = await renderAllAds(ads, false, qrUrl);
-      callbacks.onCampaignUpdate({ ads });
-    }
+    callbacks.onProgress("Rendering ad card visuals from template…", "generating");
+    ads = await renderAllAds(ads, true, qrUrl, { campaignId: campaign.id });
+    callbacks.onCampaignUpdate({ ads });
   }
 
   if (campaign.phase === "generating" && ads.length > 0) {
-    const needsTemplateRender = ads.some((ad) => !ad.creativeAssetUrl && !ad.imageDataUrl);
-    if (needsTemplateRender) {
+    const needsRerender = ads.some((ad) => !ad.imageDataUrl);
+    if (needsRerender) {
       callbacks.onProgress("Resuming ad rendering…", "generating");
-      ads = await renderAllAds(ads, true, qrUrl);
+      ads = await renderAllAds(ads, true, qrUrl, { campaignId: campaign.id });
       callbacks.onCampaignUpdate({ ads });
     }
   }

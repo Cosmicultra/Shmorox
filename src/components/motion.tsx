@@ -378,6 +378,8 @@ export function PresenceModal({
 
   className,
 
+  overlayClassName,
+
 }: {
 
   open: boolean;
@@ -387,6 +389,8 @@ export function PresenceModal({
   children: ReactNode;
 
   className?: string;
+
+  overlayClassName?: string;
 
 }) {
 
@@ -402,7 +406,10 @@ export function PresenceModal({
 
         <motion.div
 
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8"
+          className={cn(
+            "fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8",
+            overlayClassName
+          )}
 
           role="dialog"
 

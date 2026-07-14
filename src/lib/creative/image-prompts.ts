@@ -1,3 +1,4 @@
+import { getProductScreenshotsPromptBlock } from "../ad/product-screenshots";
 import {
   getBrandColorsBlock,
   getBrandConstraintsBlock,
@@ -41,6 +42,8 @@ ${getBrandConstraintsBlock()}
 Brand Colors:
 ${getBrandColorsBlock()}
 
+${getProductScreenshotsPromptBlock()}
+
 CREATIVE DIRECTION (this concept's layout system):
 ${getVisualSystemBlock(brief)}
 
@@ -61,7 +64,8 @@ ${brief.imagePrompt}
 
 Aspect Ratio: 1:1 (master concept)
 
-Execute the layout archetype precisely. Do not fall back to a generic headline-left/product-right template unless the archetype specifies it.`;
+Execute the layout archetype precisely. Do not fall back to a generic headline-left/product-right template unless the archetype specifies it.
+When showing product UI, match a real AdvisorPilot screenshot from the catalog above — never invent a generic dashboard.`;
 }
 
 export function buildAspectAdaptationPrompt(
