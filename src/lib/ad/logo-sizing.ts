@@ -1,7 +1,7 @@
 import type { AspectRatio } from "@/lib/types";
 import { LAYOUT, SPACE } from "./ad-design-system";
 
-const QR_LABEL_HEIGHT = 22;
+const QR_CTA_LABEL_HEIGHT = 44;
 
 /** Inputs that influence how much top-left space the logo may occupy. */
 export interface LogoSizingInput {
@@ -10,6 +10,7 @@ export interface LogoSizingInput {
   subheadLength: number;
   supportingLength: number;
   hasFeatureIcons?: boolean;
+  hasValueProps?: boolean;
   hasAccentBar?: boolean;
   hasStepList?: boolean;
   qrPresent?: boolean;
@@ -24,9 +25,9 @@ export interface LogoSizingResult {
   contentDensity: number;
 }
 
-/** QR block height: code + padding + label (positioned bottom-left, not in header). */
-export function getQrBlockHeight(qrSize = LAYOUT.qrSize): number {
-  return qrSize + SPACE.sm + 12 + QR_LABEL_HEIGHT;
+/** QR block height: code + padding (CTA sits beside QR horizontally). */
+export function getQrBlockHeight(qrSize: number = LAYOUT.qrSize): number {
+  return Math.max(qrSize + 12 + SPACE.sm, QR_CTA_LABEL_HEIGHT);
 }
 
 /** Normalized content density — more copy below = less room for an oversized logo. */
@@ -35,13 +36,14 @@ export function computeContentDensity(input: LogoSizingInput): number {
   const subheadScore = Math.min(input.subheadLength / 120, 1) * 0.28;
   const supportingScore = Math.min(input.supportingLength / 90, 1) * 0.18;
   const featureScore = input.hasFeatureIcons ? 0.22 : 0;
+  const valuePropScore = input.hasValueProps ? 0.2 : 0;
   const stepScore = input.hasStepList ? 0.26 : 0;
   const accentScore = input.hasAccentBar ? 0.04 : 0;
   const qrScore = input.qrPresent ? 0.06 : 0;
 
   return Math.min(
     1,
-    headlineScore + subheadScore + supportingScore + featureScore + stepScore + accentScore + qrScore
+    headlineScore + subheadScore + supportingScore + featureScore + valuePropScore + stepScore + accentScore + qrScore
   );
 }
 
@@ -67,7 +69,10 @@ export function computeLogoSizing(input: LogoSizingInput): LogoSizingResult {
   const zoneWidth = getLogoZoneWidth(input.aspectRatio);
 
   const fillRatio = 0.96 - density * 0.32;
-  const minLogoHeight = Math.round(qrSize * LAYOUT.logoMinQrRatio);
+  let minLogoHeight = Math.round(qrSize * LAYOUT.logoMinQrRatio);
+  if (input.hasStepList) {
+    minLogoHeight = Math.max(minLogoHeight, Math.round(qrSize * 1.25));
+  }
   const densityBonus = Math.round((1 - density) * 56);
   let targetHeight = Math.round(minLogoHeight + densityBonus);
 

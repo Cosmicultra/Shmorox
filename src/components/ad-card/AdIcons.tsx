@@ -54,23 +54,30 @@ export function FeatureIconCircle({
   icon,
   label,
   align = "center",
+  size = 52,
+  labelSize = 11,
+  width,
 }: {
   icon: IconKey;
   label: string;
   align?: "left" | "center";
+  size?: number;
+  labelSize?: number;
+  width?: number;
 }) {
+  const cellWidth = width ?? (align === "left" ? 120 : undefined);
   return (
     <div
       style={{
         flex: align === "left" ? "0 0 auto" : undefined,
-        width: align === "left" ? 120 : undefined,
+        width: cellWidth,
         textAlign: align,
       }}
     >
       <div
         style={{
-          width: 52,
-          height: 52,
+          width: size,
+          height: size,
           borderRadius: "50%",
           border: `1.5px solid ${VISUAL_TOKENS.navy}`,
           display: "flex",
@@ -80,11 +87,11 @@ export function FeatureIconCircle({
           background: "rgba(255,255,255,0.8)",
         }}
       >
-        <AdIcon icon={icon} size={24} />
+        <AdIcon icon={icon} size={Math.round(size * 0.46)} />
       </div>
       <div
         style={{
-          fontSize: 11,
+          fontSize: labelSize,
           lineHeight: 1.35,
           color: VISUAL_TOKENS.navy,
           fontWeight: 600,

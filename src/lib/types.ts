@@ -147,7 +147,7 @@ export type CampaignStatus =
   | "posted"
   | "failed";
 
-export type { AdTemplateId } from "./ad/ad-template-registry";
+export type { AdTemplateId, AdLayoutStyle, CanvasStyle } from "./ad/ad-template-registry";
 
 export interface GeneratedAd {
   id: string;
@@ -157,6 +157,10 @@ export interface GeneratedAd {
   layoutVariant?: LayoutVariant;
   /** Export template from ad-template-registry */
   templateId?: import("./ad/ad-template-registry").AdTemplateId;
+  /** split-graphic (default) or text-only layout */
+  layoutStyle?: import("./ad/ad-template-registry").AdLayoutStyle;
+  /** gradient (default) or clean white canvas */
+  canvasStyle?: import("./ad/ad-template-registry").CanvasStyle;
   /** Hash of copy + layout for cache invalidation */
   contentHash?: string;
   headline: string;
@@ -233,7 +237,13 @@ export interface CampaignRun {
   postResults?: Partial<Record<SocialPlatform, { success: boolean; message: string }>>;
   /** When true, generates AI preview images for every concept (expensive). */
   generateConceptImages?: boolean;
+  /** Ad layout: split with graphic or text-only */
+  layoutStyle?: import("./ad/ad-template-registry").AdLayoutStyle;
+  /** Canvas background: gradient or clean white */
+  canvasStyle?: import("./ad/ad-template-registry").CanvasStyle;
   generationCost?: import("./openai/cost-tracker").GenerationCostReport;
+  /** Why the run used template seeds instead of the Creative Director pipeline. */
+  pipelineFallbackReason?: string;
 }
 
 export const SOCIAL_PLATFORMS: {

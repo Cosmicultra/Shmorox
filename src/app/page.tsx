@@ -47,7 +47,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
 };
 
 export default function HomePage() {
-  const { reviews, results, campaigns, socialConnections, deleteCampaign } = useApp();
+  const { reviews, results, campaigns, socialConnections, deleteCampaign, deleteReview } = useApp();
   const [quickStartOpen, setQuickStartOpen] = useState(false);
 
   const { completed, inProgress, activeCampaigns, connectedPlatforms } = useMemo(() => {
@@ -304,8 +304,8 @@ export default function HomePage() {
 
                   return (
                     <StaggerItem key={review.id}>
-                      <Link href={`/review/${review.id}`} prefetch={false}>
-                        <Card hover className="flex items-center justify-between p-4">
+                      <Card hover className="flex items-center gap-2 p-4">
+                        <Link href={`/review/${review.id}`} prefetch={false} className="min-w-0 flex-1">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="truncate font-medium text-primary">{review.title}</h3>
@@ -323,9 +323,30 @@ export default function HomePage() {
                               {new Date(review.createdAt).toLocaleDateString()}
                             </p>
                           </div>
-                          <ArrowRight className="ml-3 h-4 w-4 shrink-0 text-secondary" />
-                        </Card>
-                      </Link>
+                        </Link>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete review "${review.title}"? This cannot be undone.`)) {
+                                deleteReview(review.id);
+                              }
+                            }}
+                            className="rounded-lg p-2 text-secondary transition-colors hover:bg-danger/10 hover:text-danger"
+                            aria-label={`Delete review ${review.title}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          <Link
+                            href={`/review/${review.id}`}
+                            prefetch={false}
+                            className="rounded-lg p-2 text-secondary transition-colors hover:bg-muted hover:text-primary"
+                            aria-label={`Open review ${review.title}`}
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </Link>
+                        </div>
+                      </Card>
                     </StaggerItem>
                   );
                 })}

@@ -57,6 +57,7 @@ export default function CampaignDetailPage() {
   const {
     getCampaign,
     updateCampaign,
+    hydrateCampaign,
     addReview,
     setResult,
     updateReview,
@@ -75,6 +76,11 @@ export default function CampaignDetailPage() {
   useEffect(() => {
     if (campaign?.progressMessage) setProgress(campaign.progressMessage);
   }, [campaign?.progressMessage]);
+
+  useEffect(() => {
+    if (!campaignsLoaded || !id) return;
+    void hydrateCampaign(id);
+  }, [campaignsLoaded, id, hydrateCampaign]);
 
   useEffect(() => {
     if (!campaignsLoaded) return;
@@ -139,6 +145,8 @@ export default function CampaignDetailPage() {
             contentPillarId: campaign.contentPillar,
             platforms: campaign.platforms,
             generateConceptImages: campaign.generateConceptImages,
+            layoutStyle: campaign.layoutStyle,
+            canvasStyle: campaign.canvasStyle,
           },
           pipelineCallbacks
         );
@@ -302,6 +310,25 @@ export default function CampaignDetailPage() {
       </Card>
 
       <CreativeDirectorDashboard campaign={campaign} />
+
+      {campaign.pipelineFallbackReason && (
+        <Card className="border-caution/40 bg-caution/5 p-5">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-caution" />
+            <div>
+              <p className="font-medium text-primary">Creative Director skipped — template fallback</p>
+              <p className="mt-1 text-sm text-secondary">
+                The AI exploration step did not run, so there is no generation cost breakdown and ads
+                were built instantly from pillar seed copy. Reason: {campaign.pipelineFallbackReason}
+              </p>
+              <p className="mt-2 text-xs text-secondary">
+                Restore the full pipeline by fixing your OpenAI API key / billing quota, then start a new
+                campaign.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {isFailed && (
         <Card className="border-danger/30 bg-danger/5 p-6">

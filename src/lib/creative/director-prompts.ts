@@ -7,6 +7,8 @@ import {
   resolveTemplateFromArchetype,
 } from "../ad/ad-template-registry";
 import { getStepSchemaForPillar } from "../ad/ad-layout-linter";
+import { getProductClarityForPillar } from "../ad/product-clarity";
+import { getPillarCopyGuardrailsPromptBlock } from "../ad/pillar-copy-guardrails";
 import { PILLAR_LAYOUTS } from "../ad/visual-config";
 import { ADVISORPILOT_KNOWLEDGE, getPillarById } from "../knowledge/advisorpilot";
 import { getBrandDNA, getBrandDNAContextBlock } from "./brand-dna";
@@ -211,15 +213,30 @@ Transformation (after): ${pillar.transformationAfter}`
   const copyLimits = getCopyLimitsForTemplate(templateId);
   const templateContext = getTemplatePromptBlock(templateId);
   const stepSchema = getStepSchemaForPillar(input.contentPillarId);
+  const productClarity = getProductClarityForPillar(input.contentPillarId);
+  const faCopyEnforcement = `
+FA COPY LADDER (mandatory — CMO stranger test):
+- A stranger must know in 3 seconds: what AdvisorPilot is, what it does, who it is for, why it is different.
+- Product category line (rendered above headline): "${productClarity.productCategory}"
+- supportingCopy (subhead / whatWeDo) MUST be a concrete capability with an action verb — seed: "${productClarity.whatWeDo}"
+- whoItsFor and whyDifferent render in the value band — do NOT repeat them verbatim in supportingCopy.
+- BANNED vague words in supportingCopy: transforming, leveraging, solution (without concrete action), platform, unlock, empower.
+- Subhead MUST include an action verb (extract, confirm, draft, automate, trace, scale, prep, etc.) and advisor/RIA audience context.
+- Do NOT repeat "Secure. Your Data.", "Built for Advisors.", or similar trust-footer copy in subhead.
+- If proof type is steps: supportingCopy IS the subhead only — no fourth body paragraph.
+- Headline test: would a busy FA stop scrolling on LinkedIn?
+${pillar?.outcomeLine ? `- Pillar outcome line (suppressed at render when redundant): ${pillar.outcomeLine}` : ""}
+${getPillarCopyGuardrailsPromptBlock(input.contentPillarId)}`;
   const exportCopyRules = `
 EXPORT TEMPLATE (deterministic ad card — copy MUST fit):
 ${templateContext}
+${faCopyEnforcement}
 - Headline: max ${copyLimits.maxHeadlineChars} characters (no em-dashes)
-- Supporting copy: max ${copyLimits.maxSubheadChars} characters
+- Supporting copy (subhead): max ${copyLimits.subheadMax ?? copyLimits.maxSubheadChars} characters
 - Proof type: ${copyLimits.proofType}${copyLimits.accentBar ? " (include accent bar visual cue in hierarchy)" : ""}
 ${
   copyLimits.proofType === "steps" && stepSchema
-    ? `- When proof type is steps, use exactly 3 steps matching this shape:\n${JSON.stringify(stepSchema, null, 2)}`
+    ? `- When proof type is steps, use exactly 3 steps matching this shape (do NOT repeat in supportingCopy):\n${JSON.stringify(stepSchema, null, 2)}`
     : ""
 }`;
 
@@ -304,6 +321,7 @@ export function buildVariationPrompt(
   const template = resolveTemplateFromArchetype(layoutArchetype, contentPillarId);
   const copyLimits = getCopyLimitsForTemplate(template.id);
   const stepSchema = getStepSchemaForPillar(contentPillarId);
+  const pillar = contentPillarId ? getPillarById(contentPillarId) : undefined;
 
   return `Develop a distinct creative STRATEGY with a specific LAYOUT ARCHETYPE for this campaign.
 
@@ -319,10 +337,13 @@ ${archetypeBlock}
 EXPORT TEMPLATE (maps to final ad card): ${template.id}
 ${getTemplatePromptBlock(template.id)}
 Copy limits: headline max ${copyLimits.maxHeadlineChars} chars, subhead max ${copyLimits.maxSubheadChars} chars, proof=${copyLimits.proofType}.
+FA COPY LADDER: pain → transformation → proof. Subhead must not repeat step titles.
 ${
   copyLimits.proofType === "steps" && stepSchema
-    ? `Use 3 steps: ${JSON.stringify(stepSchema)}`
-    : ""
+    ? `Use 3 steps (do NOT echo in supportingCopy): ${JSON.stringify(stepSchema)}`
+    : pillar?.outcomeLine
+      ? `Optional outcome line for icon templates: ${pillar.outcomeLine}`
+      : ""
 }
 
 Base brief (already reviewed):

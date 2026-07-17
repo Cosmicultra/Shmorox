@@ -4,8 +4,10 @@ import type { AspectRatio, GeneratedAd, SocialPlatform } from "../types";
 import { SOCIAL_PLATFORMS } from "../types";
 import { enrichGeneratedAd } from "./ad-creative-content";
 import { getLayoutForPillar } from "./visual-config";
+import { getTemplateForPillar } from "./ad-template-registry";
 import {
   AD_DIMENSIONS,
+  fitGeneratedCopyForLayout,
   getPlatformCopyAdjustments,
   validateCreative,
 } from "./creative-rules";
@@ -16,6 +18,8 @@ export interface AdGenerationInput {
   platforms: SocialPlatform[];
   /** Expensive: generate AI preview images for all concepts before selection. */
   generateConceptImages?: boolean;
+  layoutStyle?: import("./ad-template-registry").AdLayoutStyle;
+  canvasStyle?: import("./ad-template-registry").CanvasStyle;
 }
 
 const CAPTION_TEMPLATES: Record<string, string[]> = {
@@ -46,7 +50,9 @@ export function generateAdsFromTemplates(input: AdGenerationInput): GeneratedAd[
   if (!pillar) throw new Error(`Unknown content pillar: ${input.contentPillarId}`);
 
   const ads: GeneratedAd[] = [];
-  const layoutVariant = getLayoutForPillar(input.contentPillarId);
+  const layoutStyle = input.layoutStyle ?? "split-graphic";
+  const template = getTemplateForPillar(input.contentPillarId, layoutStyle);
+  const layoutVariant = template.layoutVariant;
 
   for (const platform of input.platforms) {
     const platformConfig = SOCIAL_PLATFORMS.find((p) => p.id === platform);
@@ -58,7 +64,15 @@ export function generateAdsFromTemplates(input: AdGenerationInput): GeneratedAd[
     const cta = sanitizeNoEmDash(copy.cta);
 
     for (const aspectRatio of platformConfig.aspectRatios) {
-      validateCreative(headline, subhead, cta, aspectRatio);
+      const fittedCopy = fitGeneratedCopyForLayout({
+        contentPillarId: input.contentPillarId,
+        platform,
+        aspectRatio,
+        headline,
+        subhead,
+        templateId: template.id,
+      });
+      validateCreative(fittedCopy.headline, fittedCopy.subhead, cta, aspectRatio);
       const dims = AD_DIMENSIONS[aspectRatio];
 
       ads.push(
@@ -68,8 +82,10 @@ export function generateAdsFromTemplates(input: AdGenerationInput): GeneratedAd[
           aspectRatio,
           contentPillarId: input.contentPillarId,
           layoutVariant,
-          headline,
-          subhead,
+          layoutStyle,
+          canvasStyle: input.canvasStyle ?? template.canvasStyle,
+          headline: fittedCopy.headline,
+          subhead: fittedCopy.subhead,
           cta,
           disclaimer: sanitizeNoEmDash(ADVISORPILOT_KNOWLEDGE.standardDisclaimer),
           width: dims.width,

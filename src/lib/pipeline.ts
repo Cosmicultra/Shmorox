@@ -52,6 +52,8 @@ export interface PipelineInput {
   contentPillarId: string;
   platforms: SocialPlatform[];
   generateConceptImages?: boolean;
+  layoutStyle?: import("./ad/ad-template-registry").AdLayoutStyle;
+  canvasStyle?: import("./ad/ad-template-registry").CanvasStyle;
 }
 
 async function runLegalReview(
@@ -295,6 +297,8 @@ export async function runCampaignPipeline(
       contentPillarId: input.contentPillarId,
       platforms: input.platforms,
       generateConceptImages: input.generateConceptImages,
+      layoutStyle: input.layoutStyle,
+      canvasStyle: input.canvasStyle,
     },
     onProgress: (step) => {
       touchPipeline(campaignId);
@@ -325,6 +329,8 @@ export async function runCampaignPipeline(
     imagesBlocked: creativeResult.imagesBlocked,
     creativePipelineStep: creativeResult.creativePipelineStep ?? "complete",
     generationCost: creativeResult.generationCost,
+    pipelineFallbackReason:
+      creativeResult.source === "template" ? creativeResult.fallbackReason : undefined,
   });
 
   const needsTemplateRender = ads.some((ad) => !ad.imageDataUrl);
@@ -416,6 +422,8 @@ export async function resumeCampaignPipeline(
     contentPillarId: campaign.contentPillar,
     platforms: campaign.platforms,
     generateConceptImages: campaign.generateConceptImages,
+    layoutStyle: campaign.layoutStyle,
+    canvasStyle: campaign.canvasStyle,
   };
   const qrUrl = campaign.qrUrl || buildDemoUrl("social", campaign.id);
   let ads = campaign.ads;

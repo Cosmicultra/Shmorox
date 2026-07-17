@@ -7,9 +7,13 @@ export type AdTemplateId =
   | "split-clarity"
   | "split-office"
   | "split-monitor"
-  | "diagonal-growth";
+  | "diagonal-growth"
+  | "text-focused";
 
-export type VisualLayoutMode = "split" | "stacked" | "diagonal";
+export type AdLayoutStyle = "split-graphic" | "text-only";
+export type CanvasStyle = "gradient" | "clean";
+
+export type VisualLayoutMode = "split" | "stacked" | "diagonal" | "text-only";
 export type BackgroundCrop = "right-half" | "bottom-band" | "full" | "none";
 export type ProofType = "steps" | "icons" | "none";
 
@@ -26,6 +30,8 @@ export interface AdTemplateCopySchema {
   maxSubheadChars: number;
   proofType: ProofType;
   accentBar: boolean;
+  showSupportingLine: boolean;
+  maxStepDescChars: number;
 }
 
 export interface AdTemplateVisual {
@@ -43,6 +49,7 @@ export interface AdTemplateDefinition {
   aspectRatios: AspectRatio[];
   copySchema: AdTemplateCopySchema;
   visual: AdTemplateVisual;
+  canvasStyle: CanvasStyle;
   platformOverrides: Partial<Record<SocialPlatform, PlatformLayoutTweak>>;
 }
 
@@ -54,9 +61,11 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     aspectRatios: ["1:1", "9:16"],
     copySchema: {
       maxHeadlineChars: 72,
-      maxSubheadChars: 120,
+      maxSubheadChars: 90,
       proofType: "steps",
       accentBar: false,
+      showSupportingLine: false,
+      maxStepDescChars: 48,
     },
     visual: {
       mode: "split",
@@ -69,6 +78,7 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
       instagram: { headlineScale: 0.94, compactFooter: true },
       x: { qrSize: 140, subheadMaxChars: 100 },
     },
+    canvasStyle: "gradient",
   },
   "split-clarity": {
     id: "split-clarity",
@@ -77,9 +87,11 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     aspectRatios: ["1:1", "9:16"],
     copySchema: {
       maxHeadlineChars: 80,
-      maxSubheadChars: 130,
-      proofType: "icons",
+      maxSubheadChars: 90,
+      proofType: "steps",
       accentBar: true,
+      showSupportingLine: false,
+      maxStepDescChars: 48,
     },
     visual: {
       mode: "split",
@@ -89,8 +101,9 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     },
     platformOverrides: {
       instagram: { headlineScale: 0.92, compactFooter: true },
-      x: { qrSize: 140, subheadMaxChars: 110 },
+      x: { qrSize: 140, subheadMaxChars: 90 },
     },
+    canvasStyle: "gradient",
   },
   "split-office": {
     id: "split-office",
@@ -99,9 +112,11 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     aspectRatios: ["1:1", "9:16"],
     copySchema: {
       maxHeadlineChars: 85,
-      maxSubheadChars: 140,
-      proofType: "icons",
+      maxSubheadChars: 90,
+      proofType: "none",
       accentBar: false,
+      showSupportingLine: false,
+      maxStepDescChars: 48,
     },
     visual: {
       mode: "split",
@@ -113,6 +128,7 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
       instagram: { headlineScale: 0.93 },
       x: { qrSize: 140 },
     },
+    canvasStyle: "gradient",
   },
   "split-monitor": {
     id: "split-monitor",
@@ -121,9 +137,11 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     aspectRatios: ["1:1", "9:16"],
     copySchema: {
       maxHeadlineChars: 80,
-      maxSubheadChars: 130,
-      proofType: "icons",
+      maxSubheadChars: 90,
+      proofType: "none",
       accentBar: true,
+      showSupportingLine: false,
+      maxStepDescChars: 48,
     },
     visual: {
       mode: "split",
@@ -132,8 +150,9 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
       screenshotPillar: "compliance-posture",
     },
     platformOverrides: {
-      x: { qrSize: 140, subheadMaxChars: 100 },
+      x: { qrSize: 140, subheadMaxChars: 90 },
     },
+    canvasStyle: "gradient",
   },
   "diagonal-growth": {
     id: "diagonal-growth",
@@ -142,9 +161,11 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     aspectRatios: ["1:1", "9:16"],
     copySchema: {
       maxHeadlineChars: 70,
-      maxSubheadChars: 120,
-      proofType: "icons",
+      maxSubheadChars: 90,
+      proofType: "none",
       accentBar: false,
+      showSupportingLine: false,
+      maxStepDescChars: 48,
     },
     visual: {
       mode: "diagonal",
@@ -156,6 +177,32 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
       instagram: { compactFooter: true },
       x: { qrSize: 140 },
     },
+    canvasStyle: "gradient",
+  },
+  "text-focused": {
+    id: "text-focused",
+    archetype: "editorial-cover",
+    layoutVariant: "split-office",
+    aspectRatios: ["1:1", "9:16"],
+    copySchema: {
+      maxHeadlineChars: 85,
+      maxSubheadChars: 90,
+      proofType: "none",
+      accentBar: false,
+      showSupportingLine: false,
+      maxStepDescChars: 48,
+    },
+    visual: {
+      mode: "text-only",
+      backgroundCrop: "none",
+      screenshotPillar: "portfolio-narrative",
+    },
+    platformOverrides: {
+      linkedin: { qrSize: 168 },
+      instagram: { headlineScale: 0.94, compactFooter: true },
+      x: { qrSize: 140, subheadMaxChars: 80 },
+    },
+    canvasStyle: "clean",
   },
 };
 
@@ -173,19 +220,28 @@ const ARCHETYPE_TEMPLATE_FALLBACK: Partial<Record<LayoutArchetypeId, AdTemplateI
   "human-product": "split-office",
   "workflow-visualization": "split-monitor",
   "executive-statement": "diagonal-growth",
-  "editorial-cover": "split-office",
+  "editorial-cover": "text-focused",
   "before-after": "split-clarity",
   "feature-announcement": "split-dashboard",
 };
 
-export function getTemplateForPillar(pillarId?: string): AdTemplateDefinition {
+export function getTemplateForPillar(
+  pillarId?: string,
+  layoutStyle: AdLayoutStyle = "split-graphic"
+): AdTemplateDefinition {
+  if (layoutStyle === "text-only") {
+    return AD_TEMPLATE_REGISTRY["text-focused"];
+  }
   const id: AdTemplateId =
     (pillarId && PILLAR_TEMPLATE_MAP[pillarId]) || "split-office";
   return AD_TEMPLATE_REGISTRY[id];
 }
 
-export function getTemplateIdForPillar(pillarId?: string): AdTemplateId {
-  return getTemplateForPillar(pillarId).id;
+export function getTemplateIdForPillar(
+  pillarId?: string,
+  layoutStyle: AdLayoutStyle = "split-graphic"
+): AdTemplateId {
+  return getTemplateForPillar(pillarId, layoutStyle).id;
 }
 
 export function resolveTemplateFromArchetype(
@@ -226,5 +282,16 @@ export function getCopyLimitsForTemplate(
 
 export function getTemplatePromptBlock(templateId: AdTemplateId): string {
   const t = AD_TEMPLATE_REGISTRY[templateId];
-  return `Export template: ${t.id} (${t.visual.mode}, proof=${t.copySchema.proofType}). Headline max ${t.copySchema.maxHeadlineChars} chars, subhead max ${t.copySchema.maxSubheadChars} chars.`;
+  const cs = t.copySchema;
+  const supportingRule =
+    cs.proofType === "steps" || !cs.showSupportingLine
+      ? "Do NOT write a fourth supporting paragraph — steps are the proof."
+      : "One optional outcome line only; must not repeat step titles or subhead.";
+  return `Export template: ${t.id} (${t.visual.mode}, proof=${cs.proofType}).
+- Headline max ${cs.maxHeadlineChars} chars; subhead max ${cs.maxSubheadChars} chars.
+- Step descriptions max ${cs.maxStepDescChars} chars each.
+- ${supportingRule}
+- Headline test: would a busy FA stop scrolling on LinkedIn?
+- Subhead must state what AdvisorPilot does and who it is for (advisors/RIAs) in ≤90 chars.
+- Value props (Secure. Your Data., Built for Advisors.) render automatically — do not repeat in subhead.`;
 }

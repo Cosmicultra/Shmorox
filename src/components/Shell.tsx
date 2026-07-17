@@ -1,14 +1,28 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { HomeRedirect } from "@/components/HomeRedirect";
 import { MotionProvider, PageTransition } from "@/components/motion";
 
 export function Shell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/auth");
+
+  if (isAuthPage) {
+    return (
+      <MotionProvider>
+        <div className="flex min-h-screen items-center justify-center bg-base px-4">
+          <PageTransition>{children}</PageTransition>
+        </div>
+      </MotionProvider>
+    );
+  }
 
   return (
     <MotionProvider>

@@ -32,8 +32,10 @@ Evaluate each criterion honestly:
 5. Is the positioning clear in one sentence?
 6. Is the audience pain point strong and specific?
 7. Does the concept have a strategic reason to exist beyond "nice looking"?
+8. CMO stranger test: would someone who has never heard of AdvisorPilot know what it does, who it is for, and why it is not Excel/CRM?
 
 If ANY critical criterion fails, REJECT the direction.
+If criterion 8 fails (vague supportingCopy, no concrete capability verb, no advisor audience), REJECT — this is a hard gate.
 
 When rejecting, you MUST provide:
 - Specific rejection reasons (not vague)

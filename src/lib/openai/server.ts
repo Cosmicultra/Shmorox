@@ -16,6 +16,8 @@ interface ChatCompletionResponse {
   };
   error?: {
     message?: string;
+    type?: string;
+    code?: string;
   };
 }
 
@@ -65,7 +67,16 @@ export async function generateJSON<T>(
       );
 
       if (!response.ok) {
-        throw new Error(data.error?.message ?? `OpenAI request failed (${response.status})`);
+        const err = data.error;
+        const detail = [
+          err?.message,
+          err?.type ? `type=${err.type}` : null,
+          err?.code ? `code=${err.code}` : null,
+          `http=${response.status}`,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+        throw new Error(detail || `OpenAI request failed (${response.status})`);
       }
 
       const content = data.choices?.[0]?.message?.content?.trim();

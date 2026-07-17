@@ -2,17 +2,29 @@ import type { AspectRatio, GeneratedAd, SocialPlatform } from "@/lib/types";
 import { sanitizeNoEmDash } from "./content-guardrails";
 import {
   getTemplateForPillar,
-  getTemplateIdForPillar,
+  AD_TEMPLATE_REGISTRY,
   type AdTemplateId,
   type ProofType,
+  type AdLayoutStyle,
 } from "./ad-template-registry";
 import {
   getFeaturesForPillar,
   getStepsForPillar,
   getSupportingLine,
+  usesStepList,
   type IconKey,
   type LayoutVariant,
 } from "./visual-config";
+import {
+  estimateCopyColumnLayout,
+  type CopyColumnFitInput,
+} from "./ad-layout-fit";
+
+export interface AdLayoutModes {
+  supportingLine: string;
+  compactSteps: boolean;
+  compactIcons: boolean;
+}
 
 export interface AdProofPoint {
   title: string;
@@ -65,31 +77,102 @@ export function isSupportingRedundant(subhead: string, supporting: string): bool
 export function resolveSupportingLine(
   subhead: string,
   supporting: string,
-  options?: { aspectRatio?: AspectRatio; proofType?: ProofType }
+  options?: {
+    aspectRatio?: AspectRatio;
+    proofType?: ProofType;
+    showSupportingLine?: boolean;
+  }
 ): string {
+  if (options?.showSupportingLine === false) return "";
+  if (options?.proofType === "steps") return "";
+  if (options?.proofType === "icons") return "";
+  if (options?.proofType === "none") return "";
   if (isSupportingRedundant(subhead, supporting)) return "";
   if (options?.aspectRatio === "9:16" && options?.proofType === "icons") return "";
   return supporting;
 }
 
+export function resolveAdLayoutModes(
+  headline: string,
+  subhead: string,
+  layout: AdLayoutSpec,
+  rawSupporting: string
+): AdLayoutModes {
+  const template = AD_TEMPLATE_REGISTRY[layout.templateId];
+  let supportingLine = resolveSupportingLine(subhead, rawSupporting, {
+    aspectRatio: layout.aspectRatio,
+    proofType: template.copySchema.proofType,
+    showSupportingLine: template.copySchema.showSupportingLine,
+  });
+
+  const baseInput: CopyColumnFitInput = {
+    aspectRatio: layout.aspectRatio,
+    platform: layout.platform,
+    templateId: layout.templateId,
+    headline,
+    subhead,
+    supportingLine,
+    contentPillarId: layout.contentPillarId,
+    accentBar: template.copySchema.accentBar,
+    qrPresent: true,
+    iconLayout: layout.aspectRatio === "9:16" ? "grid" : "row",
+  };
+
+  let compactSteps = false;
+  let compactIcons = false;
+
+  let fit = estimateCopyColumnLayout(baseInput);
+  compactSteps = fit.compactSteps;
+
+  if (!fit.fits && supportingLine) {
+    supportingLine = "";
+    fit = estimateCopyColumnLayout({ ...baseInput, supportingLine, compactSteps });
+  }
+
+  if (!fit.fits && !compactIcons && !usesStepList(layout.contentPillarId)) {
+    compactIcons = true;
+    fit = estimateCopyColumnLayout({
+      ...baseInput,
+      supportingLine,
+      compactSteps,
+      compactIcons,
+    });
+  }
+
+  if (!fit.fits && usesStepList(layout.contentPillarId) && !compactSteps) {
+    compactSteps = true;
+    fit = estimateCopyColumnLayout({
+      ...baseInput,
+      supportingLine,
+      compactSteps: true,
+      compactIcons,
+    });
+  }
+
+  return { supportingLine, compactSteps, compactIcons };
+}
+
 export function buildContentFromAd(ad: GeneratedAd): AdCreativeContent {
   const pillarId = ad.contentPillarId;
-  const template = getTemplateForPillar(pillarId);
+  const layout = buildLayoutSpecFromAd(ad);
+  const template = AD_TEMPLATE_REGISTRY[layout.templateId];
   const steps = getStepsForPillar(pillarId);
-  const proofPoints: AdProofPoint[] | undefined = steps
-    ? steps.map((s) => ({ title: s.title, description: s.description, icon: s.icon }))
-    : getFeaturesForPillar(pillarId).map((f) => ({ title: f.label, icon: f.icon }));
+  const proofPoints: AdProofPoint[] | undefined =
+    template.copySchema.proofType === "steps" && steps
+      ? steps.map((s) => ({ title: s.title, description: s.description, icon: s.icon }))
+      : template.copySchema.proofType === "icons"
+        ? getFeaturesForPillar(pillarId).map((f) => ({ title: f.label, icon: f.icon }))
+        : undefined;
 
+  const headline = sanitizeNoEmDash(ad.headline);
   const subhead = sanitizeNoEmDash(ad.subhead);
   const rawSupporting = getSupportingLine(pillarId);
+  const modes = resolveAdLayoutModes(headline, subhead, layout, rawSupporting);
 
   return {
-    headline: sanitizeNoEmDash(ad.headline),
+    headline,
     subhead,
-    supportingLine: resolveSupportingLine(subhead, rawSupporting, {
-      aspectRatio: ad.aspectRatio,
-      proofType: template.copySchema.proofType,
-    }),
+    supportingLine: modes.supportingLine,
     proofPoints,
     disclaimer: sanitizeNoEmDash(ad.disclaimer),
     cta: sanitizeNoEmDash(ad.cta),
@@ -97,9 +180,14 @@ export function buildContentFromAd(ad: GeneratedAd): AdCreativeContent {
 }
 
 export function buildLayoutSpecFromAd(ad: GeneratedAd): AdLayoutSpec {
-  const template = getTemplateForPillar(ad.contentPillarId);
+  const layoutStyle: AdLayoutStyle = ad.layoutStyle ?? "split-graphic";
+  const template = getTemplateForPillar(ad.contentPillarId, layoutStyle);
+  const templateId =
+    layoutStyle === "text-only"
+      ? "text-focused"
+      : ((ad.templateId ?? template.id) as AdTemplateId);
   return {
-    templateId: ad.templateId ?? template.id,
+    templateId,
     aspectRatio: ad.aspectRatio,
     platform: ad.platform,
     layoutVariant: ad.layoutVariant ?? template.layoutVariant,
@@ -109,7 +197,8 @@ export function buildLayoutSpecFromAd(ad: GeneratedAd): AdLayoutSpec {
 
 export function computeContentHash(
   content: AdCreativeContent,
-  layout: AdLayoutSpec
+  layout: AdLayoutSpec,
+  meta?: { layoutStyle?: string; canvasStyle?: string }
 ): string {
   const payload = JSON.stringify({
     headline: content.headline,
@@ -121,21 +210,33 @@ export function computeContentHash(
     aspectRatio: layout.aspectRatio,
     platform: layout.platform,
     pillar: layout.contentPillarId,
+    layoutStyle: meta?.layoutStyle,
+    canvasStyle: meta?.canvasStyle,
   });
   return djb2Hash(payload);
 }
 
 export function enrichGeneratedAd(ad: GeneratedAd): GeneratedAd {
-  const templateId = ad.templateId ?? getTemplateIdForPillar(ad.contentPillarId);
-  const template = getTemplateForPillar(ad.contentPillarId);
-  const content = buildContentFromAd(ad);
-  const layout = buildLayoutSpecFromAd({ ...ad, templateId, layoutVariant: template.layoutVariant });
-  const contentHash = computeContentHash(content, layout);
-
-  return {
+  const layoutStyle: AdLayoutStyle = ad.layoutStyle ?? "split-graphic";
+  const template = getTemplateForPillar(ad.contentPillarId, layoutStyle);
+  const templateId = layoutStyle === "text-only" ? "text-focused" : (ad.templateId ?? template.id);
+  const canvasStyle = ad.canvasStyle ?? AD_TEMPLATE_REGISTRY[templateId].canvasStyle;
+  const enriched = {
     ...ad,
     templateId,
     layoutVariant: template.layoutVariant,
+    layoutStyle,
+    canvasStyle,
+  };
+  const content = buildContentFromAd(enriched);
+  const layout = buildLayoutSpecFromAd(enriched);
+  const contentHash = computeContentHash(content, layout, {
+    layoutStyle: enriched.layoutStyle,
+    canvasStyle: enriched.canvasStyle,
+  });
+
+  return {
+    ...enriched,
     contentHash,
   };
 }

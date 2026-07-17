@@ -37,11 +37,13 @@ import {
   type GenerationCostReport,
 } from "../openai/cost-tracker";
 import { generateId } from "../utils";
-import { ADVISORPILOT_KNOWLEDGE } from "../knowledge/advisorpilot";
+import { ADVISORPILOT_KNOWLEDGE, getPillarById } from "../knowledge/advisorpilot";
 import { sanitizeNoEmDash } from "./content-guardrails";
-import { AD_DIMENSIONS, validateCreative } from "./creative-rules";
-import { enrichGeneratedAd } from "./ad-creative-content";
-import { getLayoutForPillar } from "./visual-config";
+import { AD_DIMENSIONS, fitGeneratedCopyForLayout, getPlatformCopyAdjustments, validateCreative } from "./creative-rules";
+import { enrichGeneratedAd, tokenizeForOverlap } from "./ad-creative-content";
+import { resolveWhatWeDoCopy } from "./product-clarity";
+import { getStepsForPillar } from "./visual-config";
+import { getTemplateForPillar } from "./ad-template-registry";
 import { generateAdsFromTemplates } from "./template-generator";
 import { SOCIAL_PLATFORMS } from "../types";
 
@@ -73,6 +75,8 @@ export interface GenerateAdsResult {
   creativePipelineStep?: CreativePipelineStep;
   generationCost?: GenerationCostReport;
   source: "creative-director" | "template";
+  /** Set when AI creative pipeline failed and template seeds were used instead. */
+  fallbackReason?: string;
 }
 
 function getRequiredAspectRatios(platforms: AdGenerationInput["platforms"]): AspectRatio[] {
@@ -125,13 +129,52 @@ async function runCreativeStep<T>(step: string, body: Record<string, unknown>): 
   return data;
 }
 
+function normalizeBriefForTemplate(contentPillarId: string, brief: CreativeBrief): CreativeBrief {
+  const pillar = getPillarById(contentPillarId);
+  const template = getTemplateForPillar(contentPillarId);
+  const steps = getStepsForPillar(contentPillarId);
+
+  const headline = brief.headline?.trim() || pillar?.headline || "";
+  let supportingCopy = brief.supportingCopy?.trim() || pillar?.subhead || "";
+  supportingCopy = resolveWhatWeDoCopy(contentPillarId, supportingCopy);
+
+  if (template.copySchema.proofType === "steps" && steps?.length && supportingCopy) {
+    const subTokens = new Set(tokenizeForOverlap(supportingCopy));
+    const overlappingSteps = steps.filter((step) => {
+      const stepTokens = tokenizeForOverlap(`${step.title} ${step.description}`);
+      if (!stepTokens.length) return false;
+      const overlap = stepTokens.filter((t) => subTokens.has(t)).length;
+      return overlap / stepTokens.length >= 0.35;
+    }).length;
+
+    if (overlappingSteps >= 2 && pillar?.subhead) {
+      supportingCopy = resolveWhatWeDoCopy(contentPillarId, pillar.subhead);
+    }
+  }
+
+  supportingCopy = resolveWhatWeDoCopy(contentPillarId, supportingCopy);
+
+  return {
+    ...brief,
+    headline,
+    supportingCopy,
+    customerPain: brief.customerPain?.trim() || pillar?.transformationBefore || brief.customerPain,
+    transformation:
+      brief.transformation?.trim() || pillar?.transformationAfter || brief.transformation,
+  };
+}
+
 function buildAdsFromBrief(
   contentPillarId: string,
   platforms: AdGenerationInput["platforms"],
   brief: CreativeBrief,
-  adaptedImages: Partial<Record<AspectRatio, string>>
+  adaptedImages: Partial<Record<AspectRatio, string>>,
+  options?: Pick<AdGenerationInput, "layoutStyle" | "canvasStyle">
 ): GeneratedAd[] {
-  const layoutVariant = getLayoutForPillar(contentPillarId);
+  const layoutStyle = options?.layoutStyle ?? "split-graphic";
+  const template = getTemplateForPillar(contentPillarId, layoutStyle);
+  const layoutVariant = template.layoutVariant;
+  const normalizedBrief = normalizeBriefForTemplate(contentPillarId, brief);
   const ads: GeneratedAd[] = [];
 
   for (const platform of platforms) {
@@ -139,9 +182,21 @@ function buildAdsFromBrief(
     if (!platformConfig) continue;
 
     for (const aspectRatio of platformConfig.aspectRatios) {
-      const headline = sanitizeNoEmDash(brief.headline);
-      const subhead = sanitizeNoEmDash(brief.supportingCopy);
-      const cta = sanitizeNoEmDash(brief.cta);
+      const fittedCopy = fitGeneratedCopyForLayout({
+        contentPillarId,
+        platform,
+        aspectRatio,
+        headline: sanitizeNoEmDash(normalizedBrief.headline),
+        subhead: sanitizeNoEmDash(normalizedBrief.supportingCopy),
+        templateId: template.id,
+      });
+      const headline = fittedCopy.headline;
+      const subhead = fittedCopy.subhead;
+      const pillar = getPillarById(contentPillarId);
+      const platformCta = pillar
+        ? getPlatformCopyAdjustments(platform, pillar).cta
+        : normalizedBrief.cta;
+      const cta = sanitizeNoEmDash(platformCta || normalizedBrief.cta);
       validateCreative(headline, subhead, cta, aspectRatio);
       const dims = AD_DIMENSIONS[aspectRatio];
 
@@ -152,6 +207,8 @@ function buildAdsFromBrief(
           aspectRatio,
           contentPillarId,
           layoutVariant,
+          layoutStyle,
+          canvasStyle: options?.canvasStyle ?? template.canvasStyle,
           headline,
           subhead,
           cta,
@@ -214,7 +271,10 @@ export async function generateAds(
     const adaptedImages = checkpoint.adaptedImages ?? {};
     onProgress?.("Finalizing ads from completed creative pipeline…");
     return {
-      ads: buildAdsFromBrief(input.contentPillarId, input.platforms, winner.brief, adaptedImages),
+      ads: buildAdsFromBrief(input.contentPillarId, input.platforms, winner.brief, adaptedImages, {
+        layoutStyle: input.layoutStyle,
+        canvasStyle: input.canvasStyle,
+      }),
       creativeBrief: checkpoint.creativeBrief,
       originalBrief: checkpoint.originalBrief,
       creativeReview: checkpoint.creativeReview,
@@ -348,7 +408,10 @@ export async function generateAds(
       if (!productionApproved) {
         onProgress?.("Strategic exploration did not approve production. Images blocked.");
         return {
-          ads: buildAdsFromBrief(input.contentPillarId, input.platforms, winner!.brief, {}),
+          ads: buildAdsFromBrief(input.contentPillarId, input.platforms, winner!.brief, {}, {
+            layoutStyle: input.layoutStyle,
+            canvasStyle: input.canvasStyle,
+          }),
           creativeBrief: strategyBrief,
           originalBrief,
           creativeReview: review,
@@ -458,7 +521,10 @@ export async function generateAds(
       : setJobStatus(job, "packaging");
     onProgress?.("Finalizing ad variants…");
 
-    const ads = buildAdsFromBrief(input.contentPillarId, input.platforms, winner.brief, adaptedImages);
+    const ads = buildAdsFromBrief(input.contentPillarId, input.platforms, winner.brief, adaptedImages, {
+      layoutStyle: input.layoutStyle,
+      canvasStyle: input.canvasStyle,
+    });
     const finalCost = applyApprovedAssetCost(generationCost, ads.length);
 
     return {
@@ -483,9 +549,19 @@ export async function generateAds(
     };
   } catch (error) {
     saveCheckpoint(state, onCheckpoint);
-    onProgress?.("Creative Director unavailable, using template fallback…");
+    const fallbackReason =
+      error instanceof Error ? error.message : "Creative Director pipeline failed";
+    onProgress?.(
+      `Creative Director unavailable — using template fallback. (${fallbackReason})`
+    );
     console.error("Creative pipeline error:", error);
-    return { ads: generateAdsFromTemplates(input), source: "template" };
+    return {
+      ads: generateAdsFromTemplates(input),
+      source: "template",
+      fallbackReason,
+      creativeJob: job,
+      generationCost: state.generationCost,
+    };
   }
 }
 

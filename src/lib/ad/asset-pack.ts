@@ -5,9 +5,9 @@ import {
   type AdTemplateId,
   type BackgroundCrop,
 } from "./ad-template-registry";
-import { getPrimaryScreenshotForPillar } from "./product-screenshots";
+import { getPrimaryScreenshotForPillar, getSecondaryScreenshotForPillar } from "./product-screenshots";
 
-export const ASSET_PACK_VERSION = 2;
+export const ASSET_PACK_VERSION = 4;
 
 export interface BackgroundClipRect {
   /** CSS clip-path value applied to the photo container */
@@ -33,6 +33,7 @@ export interface ScreenAnchor {
   rotateY?: number;
   rotateX?: number;
   scale?: number;
+  centered?: boolean;
 }
 
 export interface ScreenInsetSpec {
@@ -44,22 +45,39 @@ export interface ScreenInsetSpec {
 /** Per-template screen placement tuned to monitor bezel in layout-example PNGs */
 const SCREEN_ANCHORS: Record<AdTemplateId, Partial<Record<AspectRatio, ScreenAnchor>>> = {
   "split-dashboard": {
-    "1:1": { top: "14%", left: "8%", width: "58%", rotateY: -6, rotateX: 1.5, scale: 1.02 },
-    "9:16": { top: "6%", left: "10%", width: "80%", rotateY: -5, rotateX: 1, scale: 1 },
+    "1:1": {
+      top: "50%",
+      left: "52%",
+      width: "80%",
+      rotateY: -8,
+      rotateX: 2,
+      scale: 1.08,
+      centered: true,
+    },
+    "9:16": {
+      top: "50%",
+      left: "50%",
+      width: "84%",
+      rotateY: -6,
+      rotateX: 1.5,
+      scale: 1.04,
+      centered: true,
+    },
   },
   "split-clarity": {
-    "1:1": { top: "12%", left: "6%", width: "54%", rotateY: -5, rotateX: 1, scale: 1.02 },
-    "9:16": { top: "8%", left: "11%", width: "78%", rotateY: -4, rotateX: 1, scale: 0.98 },
+    "1:1": { top: "14%", left: "8%", width: "44%", rotateY: -5, rotateX: 1, scale: 0.95 },
+    "9:16": { top: "10%", left: "13%", width: "66%", rotateY: -4, rotateX: 1, scale: 0.92 },
   },
   "split-office": {
-    "1:1": { top: "14%", left: "5%", width: "56%", rotateY: -8, rotateX: 2, scale: 1 },
-    "9:16": { top: "7%", left: "10%", width: "76%", rotateY: -6, rotateX: 1.5, scale: 0.98 },
+    "1:1": { top: "16%", left: "7%", width: "44%", rotateY: -8, rotateX: 2, scale: 0.92 },
+    "9:16": { top: "9%", left: "12%", width: "64%", rotateY: -6, rotateX: 1.5, scale: 0.9 },
   },
   "split-monitor": {
-    "1:1": { top: "11%", left: "7%", width: "52%", rotateY: -5, rotateX: 1, scale: 1.03 },
-    "9:16": { top: "8%", left: "12%", width: "74%", rotateY: -4, rotateX: 1, scale: 1 },
+    "1:1": { top: "13%", left: "9%", width: "42%", rotateY: -5, rotateX: 1, scale: 0.94 },
+    "9:16": { top: "10%", left: "14%", width: "62%", rotateY: -4, rotateX: 1, scale: 0.92 },
   },
   "diagonal-growth": {},
+  "text-focused": {},
 };
 
 const DEFAULT_ANCHOR: ScreenAnchor = {
@@ -80,13 +98,13 @@ const BACKGROUND_CLIPS: Record<
     "1:1": {
       clipPath: "inset(0 0 22% 0)",
       objectPosition: "right top",
-      imgWidth: "215%",
+      imgWidth: "175%",
       imgHeight: "100%",
     },
     "9:16": {
       clipPath: "inset(0 0 0 0)",
       objectPosition: "right top",
-      imgWidth: "215%",
+      imgWidth: "175%",
       imgHeight: "100%",
     },
   },
@@ -206,4 +224,15 @@ export function getScreenshotForPillar(
 ): ScreenInsetSpec | null {
   const template = getTemplateForPillar(pillarId);
   return getScreenshotForTemplate(template.id, pillarId, aspectRatio);
+}
+
+export function getSecondaryScreenshotForTemplate(
+  templateId: AdTemplateId,
+  pillarId?: string
+): { path: string; title: string } | null {
+  const template = AD_TEMPLATE_REGISTRY[templateId];
+  const pillar = pillarId ?? template.visual.screenshotPillar;
+  const shot = getSecondaryScreenshotForPillar(pillar);
+  if (!shot) return null;
+  return { path: shot.path, title: shot.title };
 }

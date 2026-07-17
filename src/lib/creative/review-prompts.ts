@@ -45,7 +45,11 @@ Evaluate:
 3. Enterprise credibility — would financial advisors trust this?
 4. Differentiation — does this stand apart from generic SaaS marketing?
 5. Brand alignment — AdvisorPilot positioning
-6. Each standard: Apple, Stripe, Mercury, Ramp, BlackRock, Bloomberg
+6. Product clarity — would a stranger know what AdvisorPilot does, who it is for, and why it is purpose-built (not generic fintech)?
+   HARD REJECT if supportingCopy lacks a concrete action verb or advisor audience reference.
+7. Advisor value — is the advisor-specific benefit obvious above the fold?
+8. Thumbnail legibility — would supporting copy read at LinkedIn 1:1 preview size (~400px)?
+9. Each standard: Apple, Stripe, Mercury, Ramp, BlackRock, Bloomberg
 
 Return JSON:
 {

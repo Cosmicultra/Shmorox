@@ -142,6 +142,15 @@ export function getPrimaryScreenshotForPillar(
   return id ? getScreenshotById(id) : getScreenshotsForPillar(pillarId)[0];
 }
 
+/** First supporting screenshot for depth layers in dashboard hero panels. */
+export function getSecondaryScreenshotForPillar(
+  pillarId?: string
+): ProductScreenshot | undefined {
+  if (!pillarId) return undefined;
+  const id = PILLAR_SUPPORTING_SCREENSHOTS[pillarId]?.[0];
+  return id ? getScreenshotById(id) : undefined;
+}
+
 /** Prompt block describing available real UI for image/director models. */
 export function getProductScreenshotsPromptBlock(pillarId?: string): string {
   const primary = getPrimaryScreenshotForPillar(pillarId);

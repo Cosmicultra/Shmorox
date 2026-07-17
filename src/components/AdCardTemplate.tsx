@@ -17,12 +17,18 @@ import {
 } from "@/lib/ad/ad-design-system";
 import { AdIcon, FeatureIconCircle } from "@/components/ad-card/AdIcons";
 import { AssetCompositor } from "@/components/ad-card/AssetCompositor";
-import { AD_TEMPLATE_REGISTRY, getPlatformTweak, getTemplateIdForPillar, type AdTemplateId } from "@/lib/ad/ad-template-registry";
-import { resolveSupportingLine } from "@/lib/ad/ad-creative-content";
+import { AD_TEMPLATE_REGISTRY, getPlatformTweak, getTemplateIdForPillar, type AdLayoutStyle, type AdTemplateId, type CanvasStyle } from "@/lib/ad/ad-template-registry";
+import { resolveAdLayoutModes } from "@/lib/ad/ad-creative-content";
+import type { AdLayoutSpec } from "@/lib/ad/ad-creative-content";
 import { computeLogoSizing, type LogoSizingResult } from "@/lib/ad/logo-sizing";
 import type { SocialPlatform } from "@/lib/types";
+import { getScreenshotForTemplate } from "@/lib/ad/asset-pack";
 import {
-  FOOTER_TRUST,
+  getProductClarityForPillar,
+  resolveWhatWeDoCopy,
+  TRUST_BADGE,
+} from "@/lib/ad/product-clarity";
+import {
   getFeaturesForPillar,
   getStepsForPillar,
   getSupportingLine,
@@ -38,45 +44,59 @@ export interface AdCardProps {
   aspectRatio: AspectRatio;
   contentPillarId?: string;
   layoutVariant?: LayoutVariant | string;
+  layoutStyle?: AdLayoutStyle;
   templateId?: AdTemplateId;
   platform?: SocialPlatform;
+  canvasStyle?: CanvasStyle;
   showQR?: boolean;
   qrDataUrl?: string;
 }
 
-function Canvas({ children }: { children: ReactNode }) {
+function Canvas({
+  children,
+  canvasStyle = "gradient",
+}: {
+  children: ReactNode;
+  canvasStyle?: CanvasStyle;
+}) {
+  const isClean = canvasStyle === "clean";
+
   return (
     <div
       style={{
         position: "relative",
         overflow: "hidden",
         fontFamily: FONT_BODY,
-        background: SURFACE.canvas,
+        background: isClean ? SURFACE.panel : SURFACE.canvas,
         boxSizing: "border-box",
       }}
     >
-      <div style={{ position: "absolute", inset: 0, background: SURFACE.ambient, pointerEvents: "none" }} />
-      <div style={{ position: "absolute", inset: 0, background: SURFACE.ambientWarm, pointerEvents: "none" }} />
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          bottom: LAYOUT.footerHeight,
-          width: 400,
-          height: 400,
-          backgroundImage: WAVE_OVERLAY,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "left bottom",
-          pointerEvents: "none",
-          opacity: 0.9,
-        }}
-      />
+      {!isClean && (
+        <>
+          <div style={{ position: "absolute", inset: 0, background: SURFACE.ambient, pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 0, background: SURFACE.ambientWarm, pointerEvents: "none" }} />
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              bottom: LAYOUT.footerHeight,
+              width: 400,
+              height: 400,
+              backgroundImage: WAVE_OVERLAY,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "left bottom",
+              pointerEvents: "none",
+              opacity: 0.9,
+            }}
+          />
+        </>
+      )}
       {children}
     </div>
   );
 }
 
-function Logo({ sizing }: { sizing: LogoSizingResult }) {
+function Logo({ sizing, centered = false }: { sizing: LogoSizingResult; centered?: boolean }) {
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
@@ -88,9 +108,10 @@ function Logo({ sizing }: { sizing: LogoSizingResult }) {
         display: "block",
         maxWidth: sizing.maxWidth,
         maxHeight: sizing.maxHeight,
-        width: "100%",
+        width: centered ? sizing.maxWidth : "100%",
+        margin: centered ? "0 auto" : undefined,
         objectFit: "contain",
-        objectPosition: "left top",
+        objectPosition: centered ? "center top" : "left top",
         background: "transparent",
       }}
     />
@@ -104,6 +125,8 @@ function buildLogoSizing({
   supporting,
   hasAccentBar,
   hasStepList,
+  hasValueProps,
+  hasFeatureIcons,
   qrDataUrl,
 }: {
   aspectRatio: AspectRatio;
@@ -112,6 +135,8 @@ function buildLogoSizing({
   supporting: string;
   hasAccentBar?: boolean;
   hasStepList?: boolean;
+  hasValueProps?: boolean;
+  hasFeatureIcons?: boolean;
   qrDataUrl?: string;
 }): LogoSizingResult {
   return computeLogoSizing({
@@ -119,7 +144,8 @@ function buildLogoSizing({
     headlineLineCount: headline.split("\n").filter(Boolean).length,
     subheadLength: subhead.length,
     supportingLength: supporting.length,
-    hasFeatureIcons: !hasStepList,
+    hasFeatureIcons,
+    hasValueProps,
     hasStepList,
     hasAccentBar,
     qrPresent: Boolean(qrDataUrl),
@@ -128,12 +154,18 @@ function buildLogoSizing({
 
 function QrCta({
   qrDataUrl,
+  cta = "Request a demo",
   compact,
   qrSize,
+  centered = false,
+  ctaFontSize,
 }: {
   qrDataUrl?: string;
+  cta?: string;
   compact?: boolean;
   qrSize?: number;
+  centered?: boolean;
+  ctaFontSize?: number;
 }) {
   if (!qrDataUrl) return null;
 
@@ -143,10 +175,12 @@ function QrCta({
     <div
       style={{
         display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        gap: SPACE.sm,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: centered ? "center" : "flex-start",
+        gap: SPACE.lg,
         flexShrink: 0,
+        width: centered ? "100%" : undefined,
       }}
     >
       <div
@@ -155,6 +189,7 @@ function QrCta({
           padding: 6,
           border: `1px solid ${T.border}`,
           boxShadow: ELEVATION.raised,
+          flexShrink: 0,
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -168,14 +203,14 @@ function QrCta({
       </div>
       <span
         style={{
-          fontSize: TYPE.label.size,
-          fontWeight: TYPE.label.weight,
-          letterSpacing: TYPE.label.tracking,
-          textTransform: "uppercase",
-          color: T.slate,
+          fontSize: ctaFontSize ?? TYPE.cta.size,
+          fontWeight: TYPE.cta.weight,
+          letterSpacing: TYPE.cta.tracking,
+          color: T.navy,
+          lineHeight: TYPE.cta.lineHeight,
         }}
       >
-        Request a demo
+        {cta}
       </span>
     </div>
   );
@@ -186,11 +221,13 @@ function EditorialHeadline({
   highlightWord,
   size,
   fontSizePx,
+  textAlign = "left",
 }: {
   lines: string[];
   highlightWord?: string;
   size: "square" | "vertical";
   fontSizePx?: number;
+  textAlign?: "left" | "center";
 }) {
   const spec = size === "vertical" ? TYPE.displayLg : TYPE.displayMd;
   const fontSize = fontSizePx ?? spec.size;
@@ -212,7 +249,7 @@ function EditorialHeadline({
   }
 
   return (
-    <h1 style={{ margin: 0 }}>
+    <h1 style={{ margin: 0, textAlign }}>
       {lines.map((line, i) => (
         <span
           key={i}
@@ -236,21 +273,26 @@ function EditorialHeadline({
 function FeatureIconRow({
   pillarId,
   layout = "row",
+  compact = false,
 }: {
   pillarId?: string;
   layout?: "row" | "grid";
+  compact?: boolean;
 }) {
   const features = getFeaturesForPillar(pillarId);
   const align = layout === "grid" ? "left" : "left";
+  const iconSize = compact ? 40 : 52;
+  const labelSize = compact ? 10 : 11;
+  const cellWidth = compact ? 88 : layout === "grid" ? 120 : 120;
 
   if (layout === "grid") {
     return (
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, 120px)",
-          gap: SPACE.md,
-          marginTop: SPACE.lg,
+          gridTemplateColumns: compact ? "repeat(4, 88px)" : "repeat(2, 120px)",
+          gap: compact ? SPACE.sm : SPACE.md,
+          marginTop: compact ? SPACE.md : SPACE.lg,
           justifyContent: "start",
         }}
       >
@@ -260,6 +302,9 @@ function FeatureIconRow({
             icon={feature.icon}
             label={feature.label}
             align={align}
+            size={iconSize}
+            labelSize={labelSize}
+            width={cellWidth}
           />
         ))}
       </div>
@@ -270,10 +315,10 @@ function FeatureIconRow({
     <div
       style={{
         display: "flex",
-        flexWrap: "wrap",
+        flexWrap: compact ? "nowrap" : "wrap",
         justifyContent: "flex-start",
-        gap: SPACE.md,
-        marginTop: SPACE.lg,
+        gap: compact ? SPACE.sm : SPACE.md,
+        marginTop: compact ? SPACE.md : SPACE.lg,
         maxWidth: LAYOUT.copyColumn,
       }}
     >
@@ -283,33 +328,52 @@ function FeatureIconRow({
           icon={feature.icon}
           label={feature.label}
           align={align}
+          size={iconSize}
+          labelSize={labelSize}
+          width={cellWidth}
         />
       ))}
     </div>
   );
 }
 
-function StepList({ pillarId }: { pillarId?: string }) {
+function StepList({
+  pillarId,
+  compact = false,
+}: {
+  pillarId?: string;
+  compact?: boolean;
+}) {
   const steps = getStepsForPillar(pillarId);
   if (!steps?.length) return null;
 
+  const descSize = compact ? TYPE.bodySm.size : TYPE.stepDesc.size;
+  const descLineHeight = compact ? TYPE.bodySm.lineHeight : TYPE.stepDesc.lineHeight;
+
   return (
-    <div style={{ marginTop: SPACE.lg, display: "flex", flexDirection: "column", gap: SPACE.md }}>
+    <div
+      style={{
+        marginTop: compact ? SPACE.md : SPACE.lg,
+        display: "flex",
+        flexDirection: "column",
+        gap: compact ? SPACE.sm : SPACE.md,
+      }}
+    >
       {steps.map((step) => (
         <div key={step.title} style={{ display: "flex", gap: SPACE.md, alignItems: "flex-start" }}>
           <div
             style={{
-              width: 40,
-              height: 40,
+              width: compact ? 36 : 40,
+              height: compact ? 36 : 40,
               borderRadius: 10,
-              background: "rgba(34, 81, 255, 0.08)",
+              background: "rgba(34, 81, 255, 0.1)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
             }}
           >
-            <AdIcon icon={step.icon} size={20} color={T.blue} />
+            <AdIcon icon={step.icon} size={compact ? 18 : 20} color={T.blue} />
           </div>
           <div>
             <div
@@ -325,8 +389,8 @@ function StepList({ pillarId }: { pillarId?: string }) {
             <div
               style={{
                 marginTop: 2,
-                fontSize: TYPE.stepDesc.size,
-                lineHeight: TYPE.stepDesc.lineHeight,
+                fontSize: descSize,
+                lineHeight: descLineHeight,
                 color: T.slate,
               }}
             >
@@ -339,64 +403,152 @@ function StepList({ pillarId }: { pillarId?: string }) {
   );
 }
 
-function FeatureBlock({
+function CapabilityValueBand({
   pillarId,
-  iconLayout = "row",
+  compact = false,
+  layout = "bullets",
+  centered = false,
+  fontSize: fontSizeOverride,
 }: {
   pillarId?: string;
-  iconLayout?: "row" | "grid";
+  compact?: boolean;
+  layout?: "horizontal" | "bullets";
+  centered?: boolean;
+  fontSize?: number;
 }) {
-  if (usesStepList(pillarId)) {
-    return <StepList pillarId={pillarId} />;
-  }
-  return <FeatureIconRow pillarId={pillarId} layout={iconLayout} />;
-}
+  const clarity = getProductClarityForPillar(pillarId);
+  const fontSize = fontSizeOverride ?? (compact ? TYPE.valueProp.size - 1 : TYPE.valueProp.size);
+  const items = [clarity.whoItsFor, clarity.whyDifferent, TRUST_BADGE];
 
-function TrustFooter({ style }: { style?: CSSProperties }) {
+  if (layout === "bullets") {
+    return (
+      <ul
+        style={{
+          listStyle: "none",
+          margin: `${compact ? SPACE.md : SPACE.lg}px 0 0`,
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: compact ? SPACE.sm : SPACE.md,
+          alignItems: centered ? "center" : "flex-start",
+        }}
+      >
+        {items.map((item) => (
+          <li
+            key={item}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: SPACE.sm,
+              fontSize,
+              fontWeight: TYPE.valueProp.weight,
+              lineHeight: TYPE.valueProp.lineHeight,
+              letterSpacing: TYPE.valueProp.tracking,
+              color: T.navy,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: T.blue,
+                flexShrink: 0,
+              }}
+            />
+            {item}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   return (
     <div
       style={{
         display: "flex",
+        flexWrap: "wrap",
         alignItems: "center",
-        justifyContent: "center",
-        gap: SPACE.xl,
-        background: SURFACE.trustBar,
-        height: LAYOUT.footerHeight,
-        padding: `0 ${SPACE.xl}px`,
-        zIndex: 30,
-        ...style,
+        gap: SPACE.sm,
+        marginTop: compact ? SPACE.md : SPACE.lg,
+        rowGap: SPACE.xs,
       }}
     >
-      {FOOTER_TRUST.map((item, i) => (
-        <div key={item.label} style={{ display: "flex", alignItems: "center", gap: SPACE.sm }}>
-          {i > 0 && (
-            <div
-              style={{
-                width: 1,
-                height: 20,
-                background: "rgba(255,255,255,0.2)",
-                marginRight: SPACE.md,
-              }}
-            />
-          )}
-          <AdIcon icon={item.icon} size={16} color={T.blue} />
-          <span
-            style={{
-              fontSize: TYPE.trust.size,
-              fontWeight: TYPE.trust.weight,
-              color: "#E8EDF2",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {item.label}
-          </span>
-        </div>
+      {items.map((item, index) => (
+        <span
+          key={item}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: SPACE.sm,
+            fontSize,
+            fontWeight: TYPE.valueProp.weight,
+            lineHeight: TYPE.valueProp.lineHeight,
+            letterSpacing: TYPE.valueProp.tracking,
+            color: T.navy,
+          }}
+        >
+          {index > 0 ? (
+            <span style={{ color: T.slateLight, fontWeight: 400 }} aria-hidden>
+              |
+            </span>
+          ) : null}
+          {item}
+        </span>
       ))}
     </div>
   );
 }
 
-function LegalLine({ text }: { text: string }) {
+function ValuePropRow({
+  pillarId,
+  compact = false,
+}: {
+  pillarId?: string;
+  compact?: boolean;
+}) {
+  return <CapabilityValueBand pillarId={pillarId} compact={compact} />;
+}
+
+function FeatureBlock({
+  pillarId,
+  proofType,
+  iconLayout = "row",
+  compactSteps = false,
+  compactIcons = false,
+}: {
+  pillarId?: string;
+  proofType: "steps" | "icons" | "none";
+  iconLayout?: "row" | "grid";
+  compactSteps?: boolean;
+  compactIcons?: boolean;
+}) {
+  if (proofType === "steps" && usesStepList(pillarId)) {
+    return <StepList pillarId={pillarId} compact={compactSteps} />;
+  }
+  if (proofType === "icons") {
+    return (
+      <FeatureIconRow pillarId={pillarId} layout={iconLayout} compact={compactIcons} />
+    );
+  }
+  return <CapabilityValueBand pillarId={pillarId} compact={compactSteps || compactIcons} />;
+}
+
+function FooterAccentBar({ style }: { style?: CSSProperties }) {
+  return (
+    <div
+      style={{
+        background: SURFACE.trustBar,
+        height: LAYOUT.footerHeight,
+        zIndex: 30,
+        ...style,
+      }}
+    />
+  );
+}
+
+function LegalLine({ text, centered = false }: { text: string; centered?: boolean }) {
   return (
     <p
       style={{
@@ -405,6 +557,7 @@ function LegalLine({ text }: { text: string }) {
         lineHeight: TYPE.legal.lineHeight,
         color: T.slateLight,
         opacity: 0.55,
+        textAlign: centered ? "center" : "left",
       }}
     >
       {text}
@@ -416,56 +569,101 @@ function LeftCopyStack({
   contentPillarId,
   headline,
   subhead,
-  supporting,
+  cta,
   qrDataUrl,
   accentBar,
   headlineSize = "square",
   logoSizing,
   platform,
   templateId,
+  proofType = "none",
   iconLayout = "row",
+  pinQrBottom = false,
+  compactIcons = false,
+  copyMaxWidth,
+  textOnlyMode = false,
 }: {
   contentPillarId?: string;
   headline: string;
   subhead: string;
   supporting: string;
+  cta: string;
   qrDataUrl?: string;
   accentBar?: boolean;
   headlineSize?: "square" | "vertical";
   logoSizing: LogoSizingResult;
   platform?: SocialPlatform;
   templateId?: AdTemplateId;
+  proofType?: "steps" | "icons" | "none";
   iconLayout?: "row" | "grid";
+  pinQrBottom?: boolean;
+  compactIcons?: boolean;
+  copyMaxWidth?: number;
+  textOnlyMode?: boolean;
 }) {
   const pillar = contentPillarId ? getPillarById(contentPillarId) : undefined;
+  const clarity = getProductClarityForPillar(contentPillarId);
+  const whatWeDo = resolveWhatWeDoCopy(contentPillarId, subhead);
   const lines = headline.split("\n").filter(Boolean);
-  const sparseHeader = logoSizing.contentDensity < 0.55;
+  const sparseHeader = logoSizing.contentDensity < 0.55 && !compactIcons;
+  const compactSteps = logoSizing.contentDensity > 0.65;
   const platformTweak =
     platform && templateId
       ? getPlatformTweak(AD_TEMPLATE_REGISTRY[templateId], platform)
       : {};
   const headlineScale = platformTweak.headlineScale ?? 1;
-  const displaySpec =
-    headlineSize === "vertical" ? TYPE.displayLg : TYPE.displayMd;
+  const textOnlyType = TYPE.textOnly;
+  const displaySpec = textOnlyMode
+    ? textOnlyType.headline
+    : headlineSize === "vertical"
+      ? TYPE.displayLg
+      : TYPE.displayMd;
   const scaledHeadlineSize = Math.round(displaySpec.size * headlineScale);
+  const maxWidth = copyMaxWidth ?? LAYOUT.copyColumn;
+  const linkedInCta = platform === "linkedin" ? "Request a demo" : cta;
+  const categorySpec = textOnlyMode ? textOnlyType.productCategory : TYPE.productCategory;
+  const whatWeDoSpec = textOnlyMode ? textOnlyType.whatWeDo : TYPE.whatWeDo;
+  const ctaSpec = textOnlyMode ? textOnlyType.cta : TYPE.cta;
+  const centered = textOnlyMode;
 
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        paddingRight: SPACE.md,
+        height: pinQrBottom && !textOnlyMode ? "100%" : undefined,
+        minHeight: pinQrBottom && !textOnlyMode ? 0 : undefined,
+        paddingRight: textOnlyMode ? 0 : SPACE.md,
         zIndex: 20,
+        maxWidth,
+        width: textOnlyMode ? "100%" : undefined,
+        textAlign: centered ? "center" : "left",
+        gap: textOnlyMode ? SPACE.lg : undefined,
       }}
     >
+      <div style={{ flex: textOnlyMode ? undefined : pinQrBottom ? 1 : undefined }}>
       <div
         style={{
-          ...(sparseHeader ? { minHeight: logoSizing.headerMinHeight } : {}),
-          marginBottom: SPACE.md,
+          ...(sparseHeader && !textOnlyMode ? { minHeight: logoSizing.headerMinHeight } : {}),
+          marginBottom: textOnlyMode ? SPACE.lg : SPACE.md,
         }}
       >
-        <Logo sizing={logoSizing} />
+        <Logo sizing={logoSizing} centered={centered} />
       </div>
+
+      <p
+        style={{
+          margin: 0,
+          fontSize: categorySpec.size,
+          lineHeight: categorySpec.lineHeight,
+          fontWeight: categorySpec.weight,
+          letterSpacing: categorySpec.tracking,
+          color: T.blue,
+          textTransform: "uppercase",
+        }}
+      >
+        {clarity.productCategory}
+      </p>
 
       {accentBar && (
         <div
@@ -473,7 +671,7 @@ function LeftCopyStack({
             width: 48,
             height: 3,
             background: T.blue,
-            marginBottom: SPACE.lg,
+            margin: `${SPACE.md}px auto ${SPACE.lg}px`,
           }}
         />
       )}
@@ -483,82 +681,113 @@ function LeftCopyStack({
         highlightWord={pillar?.highlightWord}
         size={headlineSize}
         fontSizePx={scaledHeadlineSize}
+        textAlign={centered ? "center" : "left"}
       />
 
       <p
         style={{
-          marginTop: SPACE.lg,
-          fontSize: headlineSize === "vertical" ? TYPE.bodyLg.size : TYPE.bodyMd.size,
-          lineHeight: headlineSize === "vertical" ? TYPE.bodyLg.lineHeight : TYPE.bodyMd.lineHeight,
+          marginTop: textOnlyMode ? SPACE.md : SPACE.lg,
+          fontSize: whatWeDoSpec.size,
+          lineHeight: whatWeDoSpec.lineHeight,
+          fontWeight: whatWeDoSpec.weight,
           color: T.slate,
         }}
       >
-        {subhead}
+        {whatWeDo}
       </p>
 
-      <FeatureBlock pillarId={contentPillarId} iconLayout={iconLayout} />
-
-      {supporting ? (
-        <p
-          style={{
-            marginTop: SPACE.lg,
-            fontSize: TYPE.bodySm.size,
-            lineHeight: TYPE.bodySm.lineHeight,
-            color: T.slate,
-            fontWeight: 500,
-          }}
-        >
-          {supporting}
-        </p>
-      ) : null}
+      <CapabilityValueBand
+        pillarId={contentPillarId}
+        compact={compactSteps || compactIcons}
+        layout="bullets"
+        centered={centered}
+        fontSize={textOnlyMode ? textOnlyType.valueProp.size : undefined}
+      />
+      </div>
 
       <div
         style={{
-          marginTop: SPACE.xl,
-          paddingBottom: SPACE.xxl,
+          marginTop: textOnlyMode ? SPACE.xl : pinQrBottom ? 0 : SPACE.xl,
+          paddingBottom: textOnlyMode ? SPACE.lg : SPACE.xxl,
           marginBottom: headlineSize === "vertical" ? SPACE.lg : 0,
+          alignSelf: centered ? "center" : "flex-start",
+          width: centered ? "100%" : undefined,
         }}
       >
         <QrCta
           qrDataUrl={qrDataUrl}
+          cta={linkedInCta}
           compact={headlineSize === "vertical" || platformTweak.compactFooter}
-          qrSize={platformTweak.qrSize}
+          qrSize={textOnlyMode ? LAYOUT.qrSize : platformTweak.qrSize}
+          centered={centered}
+          ctaFontSize={textOnlyMode ? ctaSpec.size : undefined}
         />
       </div>
     </div>
   );
 }
 
+function resolveCardLayoutModes(
+  headline: string,
+  subhead: string,
+  contentPillarId: string | undefined,
+  templateId: AdTemplateId,
+  aspectRatio: AspectRatio,
+  layoutVariant: LayoutVariant,
+  platform?: SocialPlatform
+) {
+  const rawSupporting = getSupportingLine(contentPillarId);
+  const layout: AdLayoutSpec = {
+    templateId,
+    aspectRatio,
+    platform: platform ?? "linkedin",
+    layoutVariant,
+    contentPillarId,
+  };
+  return resolveAdLayoutModes(headline, subhead, layout, rawSupporting);
+}
+
 function SplitLayoutCard({
   headline: h,
   subhead: s,
   disclaimer: d,
+  cta: ctaProp,
   contentPillarId,
   qrDataUrl,
   variant,
   templateId,
   platform,
+  canvasStyle = "gradient",
 }: {
   headline: string;
   subhead: string;
   disclaimer: string;
+  cta: string;
   contentPillarId?: string;
   qrDataUrl?: string;
   variant: LayoutVariant;
   templateId: AdTemplateId;
   platform?: SocialPlatform;
+  canvasStyle?: CanvasStyle;
 }) {
   const headline = sanitizeNoEmDash(h);
   const subhead = sanitizeNoEmDash(s);
   const disclaimer = sanitizeNoEmDash(d);
+  const cta = sanitizeNoEmDash(ctaProp);
   const templateDef = AD_TEMPLATE_REGISTRY[templateId];
-  const rawSupporting = getSupportingLine(contentPillarId);
-  const supporting = resolveSupportingLine(subhead, rawSupporting, {
-    aspectRatio: "1:1",
-    proofType: templateDef.copySchema.proofType,
-  });
+  const proofType = templateDef.copySchema.proofType;
+  const layoutModes = resolveCardLayoutModes(
+    headline,
+    subhead,
+    contentPillarId,
+    templateId,
+    "1:1",
+    variant,
+    platform
+  );
+  const supporting = layoutModes.supportingLine;
   const accentBar = templateDef?.copySchema.accentBar ?? variant === "split-clarity";
-  const stepList = usesStepList(contentPillarId);
+  const stepList = proofType === "steps" && usesStepList(contentPillarId);
   const logoSizing = buildLogoSizing({
     aspectRatio: "1:1",
     headline,
@@ -566,11 +795,13 @@ function SplitLayoutCard({
     supporting,
     hasAccentBar: accentBar,
     hasStepList: stepList,
+    hasValueProps: true,
+    hasFeatureIcons: proofType === "icons",
     qrDataUrl,
   });
 
   return (
-    <Canvas>
+    <Canvas canvasStyle={canvasStyle}>
       <div
         style={{
           width: LAYOUT.squareWidth,
@@ -583,17 +814,21 @@ function SplitLayoutCard({
           boxSizing: "border-box",
         }}
       >
-        <div style={{ gridColumn: 1, gridRow: 1, minHeight: 0 }}>
+        <div style={{ gridColumn: 1, gridRow: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <LeftCopyStack
             contentPillarId={contentPillarId}
             headline={headline}
             subhead={subhead}
             supporting={supporting}
+            cta={cta}
             qrDataUrl={qrDataUrl}
             accentBar={accentBar}
             logoSizing={logoSizing}
             templateId={templateId}
             platform={platform}
+            proofType={proofType}
+            pinQrBottom
+            compactIcons={layoutModes.compactIcons}
           />
         </div>
 
@@ -614,7 +849,7 @@ function SplitLayoutCard({
           />
         </div>
 
-        <TrustFooter style={{ gridColumn: "1 / -1", gridRow: 2 }} />
+        <FooterAccentBar style={{ gridColumn: "1 / -1", gridRow: 2 }} />
 
         <div
           style={{
@@ -631,44 +866,165 @@ function SplitLayoutCard({
   );
 }
 
-function DiagonalGrowthCard({
+function TextOnlyLayoutCard({
   headline: h,
   subhead: s,
   disclaimer: d,
+  cta: ctaProp,
   contentPillarId,
   qrDataUrl,
   templateId,
   platform,
+  canvasStyle = "clean",
 }: {
   headline: string;
   subhead: string;
   disclaimer: string;
+  cta: string;
   contentPillarId?: string;
   qrDataUrl?: string;
   templateId: AdTemplateId;
   platform?: SocialPlatform;
+  canvasStyle?: CanvasStyle;
 }) {
   const headline = sanitizeNoEmDash(h);
   const subhead = sanitizeNoEmDash(s);
   const disclaimer = sanitizeNoEmDash(d);
+  const cta = sanitizeNoEmDash(ctaProp);
   const templateDef = AD_TEMPLATE_REGISTRY[templateId];
-  const rawSupporting = getSupportingLine(contentPillarId);
-  const supporting = resolveSupportingLine(subhead, rawSupporting, {
-    aspectRatio: "1:1",
-    proofType: templateDef.copySchema.proofType,
-  });
-  const stepList = usesStepList(contentPillarId);
+  const proofType = templateDef.copySchema.proofType;
+  const layoutModes = resolveCardLayoutModes(
+    headline,
+    subhead,
+    contentPillarId,
+    templateId,
+    "1:1",
+    templateDef.layoutVariant,
+    platform
+  );
+  const supporting = layoutModes.supportingLine;
   const logoSizing = buildLogoSizing({
     aspectRatio: "1:1",
     headline,
     subhead,
     supporting,
-    hasStepList: stepList,
+    hasValueProps: true,
+    hasFeatureIcons: proofType === "icons",
+    hasStepList: proofType === "steps" && usesStepList(contentPillarId),
     qrDataUrl,
   });
 
   return (
-    <Canvas>
+    <Canvas canvasStyle={canvasStyle}>
+      <div
+        style={{
+          width: LAYOUT.squareWidth,
+          height: LAYOUT.squareHeight,
+          display: "grid",
+          gridTemplateRows: `1fr ${LAYOUT.footerHeight}px auto`,
+          padding: `${SPACE.xl}px ${SPACE.xl}px 0`,
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            gridRow: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            maxWidth: LAYOUT.textOnlyCopyMax,
+            margin: "0 auto",
+            width: "100%",
+            flex: 1,
+            paddingTop: SPACE.lg,
+            paddingBottom: SPACE.lg,
+          }}
+        >
+          <LeftCopyStack
+            contentPillarId={contentPillarId}
+            headline={headline}
+            subhead={subhead}
+            supporting={supporting}
+            cta={cta}
+            qrDataUrl={qrDataUrl}
+            logoSizing={logoSizing}
+            templateId={templateId}
+            platform={platform}
+            proofType={proofType}
+            compactIcons={layoutModes.compactIcons}
+            copyMaxWidth={LAYOUT.textOnlyCopyMax}
+            textOnlyMode
+          />
+        </div>
+
+        <FooterAccentBar style={{ gridRow: 2 }} />
+
+        <div
+          style={{
+            gridRow: 3,
+            padding: `${SPACE.sm}px ${SPACE.xl}px ${SPACE.md}px`,
+            zIndex: 20,
+            textAlign: "center",
+          }}
+        >
+          <LegalLine text={disclaimer} centered />
+        </div>
+      </div>
+    </Canvas>
+  );
+}
+
+function DiagonalGrowthCard({
+  headline: h,
+  subhead: s,
+  disclaimer: d,
+  cta: ctaProp,
+  contentPillarId,
+  qrDataUrl,
+  templateId,
+  platform,
+  canvasStyle = "gradient",
+}: {
+  headline: string;
+  subhead: string;
+  disclaimer: string;
+  cta: string;
+  contentPillarId?: string;
+  qrDataUrl?: string;
+  templateId: AdTemplateId;
+  platform?: SocialPlatform;
+  canvasStyle?: CanvasStyle;
+}) {
+  const headline = sanitizeNoEmDash(h);
+  const subhead = sanitizeNoEmDash(s);
+  const disclaimer = sanitizeNoEmDash(d);
+  const cta = sanitizeNoEmDash(ctaProp);
+  const templateDef = AD_TEMPLATE_REGISTRY[templateId];
+  const proofType = templateDef.copySchema.proofType;
+  const layoutModes = resolveCardLayoutModes(
+    headline,
+    subhead,
+    contentPillarId,
+    templateId,
+    "1:1",
+    "diagonal-growth",
+    platform
+  );
+  const supporting = layoutModes.supportingLine;
+  const logoSizing = buildLogoSizing({
+    aspectRatio: "1:1",
+    headline,
+    subhead,
+    supporting,
+    hasValueProps: true,
+    hasFeatureIcons: proofType === "icons",
+    hasStepList: proofType === "steps" && usesStepList(contentPillarId),
+    qrDataUrl,
+  });
+
+  return (
+    <Canvas canvasStyle={canvasStyle}>
       <div
         style={{
           width: LAYOUT.squareWidth,
@@ -687,10 +1043,13 @@ function DiagonalGrowthCard({
             headline={headline}
             subhead={subhead}
             supporting={supporting}
+            cta={cta}
             qrDataUrl={qrDataUrl}
             logoSizing={logoSizing}
             templateId={templateId}
             platform={platform}
+            proofType={proofType}
+            compactIcons={layoutModes.compactIcons}
           />
         </div>
 
@@ -710,7 +1069,7 @@ function DiagonalGrowthCard({
           />
         </div>
 
-        <TrustFooter style={{ gridColumn: "1 / -1", gridRow: 2 }} />
+        <FooterAccentBar style={{ gridColumn: "1 / -1", gridRow: 2 }} />
 
         <div
           style={{
@@ -727,21 +1086,50 @@ function DiagonalGrowthCard({
   );
 }
 
+function isSplitGraphicRenderable(templateId: AdTemplateId, pillarId?: string): boolean {
+  const template = AD_TEMPLATE_REGISTRY[templateId];
+  if (template.visual.mode === "text-only" || templateId === "text-focused") {
+    return false;
+  }
+  if (templateId === "split-dashboard") return true;
+  return Boolean(getScreenshotForTemplate(templateId, pillarId, "1:1"));
+}
+
 function SquareCard({
-  headline: h,
-  subhead: s,
-  disclaimer: d,
+  headline,
+  subhead,
+  disclaimer,
+  cta,
   contentPillarId,
   layoutVariant,
+  layoutStyle,
   templateId: propTemplateId,
   platform,
+  canvasStyle,
   qrDataUrl,
-}: Omit<AdCardProps, "aspectRatio" | "showQR" | "cta">) {
-  const headline = sanitizeNoEmDash(h);
-  const subhead = sanitizeNoEmDash(s);
-  const disclaimer = sanitizeNoEmDash(d);
+}: AdCardProps) {
   const variant = (layoutVariant as LayoutVariant) ?? "split-office";
   const templateId = propTemplateId ?? getTemplateIdForPillar(contentPillarId);
+  const resolvedCanvasStyle =
+    canvasStyle ?? AD_TEMPLATE_REGISTRY[templateId].canvasStyle;
+  const isTextOnly =
+    layoutStyle === "text-only" || templateId === "text-focused";
+
+  if (isTextOnly || !isSplitGraphicRenderable(templateId, contentPillarId)) {
+    return (
+      <TextOnlyLayoutCard
+        headline={headline}
+        subhead={subhead}
+        disclaimer={disclaimer}
+        cta={cta}
+        contentPillarId={contentPillarId}
+        qrDataUrl={qrDataUrl}
+        templateId="text-focused"
+        platform={platform}
+        canvasStyle={resolvedCanvasStyle}
+      />
+    );
+  }
 
   if (variant === "diagonal-growth" || templateId === "diagonal-growth") {
     return (
@@ -749,10 +1137,12 @@ function SquareCard({
         headline={headline}
         subhead={subhead}
         disclaimer={disclaimer}
+        cta={cta}
         contentPillarId={contentPillarId}
         qrDataUrl={qrDataUrl}
         templateId={templateId}
         platform={platform}
+        canvasStyle={resolvedCanvasStyle}
       />
     );
   }
@@ -762,11 +1152,13 @@ function SquareCard({
       headline={headline}
       subhead={subhead}
       disclaimer={disclaimer}
+      cta={cta}
       contentPillarId={contentPillarId}
       qrDataUrl={qrDataUrl}
       variant={variant}
       templateId={templateId}
       platform={platform}
+      canvasStyle={resolvedCanvasStyle}
     />
   );
 }
@@ -775,42 +1167,58 @@ function VerticalCard({
   headline: h,
   subhead: s,
   disclaimer: d,
+  cta: ctaProp,
   contentPillarId,
   layoutVariant,
+  layoutStyle,
   templateId: propTemplateId,
   platform,
+  canvasStyle,
   qrDataUrl,
-}: Omit<AdCardProps, "aspectRatio" | "showQR" | "cta">) {
+}: Omit<AdCardProps, "aspectRatio" | "showQR">) {
   const headline = sanitizeNoEmDash(h);
   const subhead = sanitizeNoEmDash(s);
   const disclaimer = sanitizeNoEmDash(d);
+  const cta = sanitizeNoEmDash(ctaProp);
   const variant = (layoutVariant as LayoutVariant) ?? "split-office";
   const templateId = propTemplateId ?? getTemplateIdForPillar(contentPillarId);
   const templateDef = AD_TEMPLATE_REGISTRY[templateId];
-  const rawSupporting = getSupportingLine(contentPillarId);
-  const supporting = resolveSupportingLine(subhead, rawSupporting, {
-    aspectRatio: "9:16",
-    proofType: templateDef.copySchema.proofType,
-  });
-  const stepList = usesStepList(contentPillarId);
+  const proofType = templateDef.copySchema.proofType;
+  const resolvedCanvasStyle = canvasStyle ?? templateDef.canvasStyle;
+  const isTextOnly =
+    layoutStyle === "text-only" || templateId === "text-focused";
+  const layoutModes = resolveCardLayoutModes(
+    headline,
+    subhead,
+    contentPillarId,
+    templateId,
+    "9:16",
+    variant,
+    platform
+  );
+  const supporting = layoutModes.supportingLine;
   const logoSizing = buildLogoSizing({
     aspectRatio: "9:16",
     headline,
     subhead,
     supporting,
-    hasStepList: stepList,
+    hasValueProps: true,
+    hasFeatureIcons: proofType === "icons",
+    hasStepList: proofType === "steps" && usesStepList(contentPillarId),
     qrDataUrl,
   });
   const instagramSafe = platform === "instagram";
 
   return (
-    <Canvas>
+    <Canvas canvasStyle={resolvedCanvasStyle}>
       <div
         style={{
           width: LAYOUT.verticalWidth,
           height: LAYOUT.verticalHeight,
           display: "grid",
-          gridTemplateRows: `auto minmax(520px, 1fr) ${LAYOUT.footerHeight}px auto`,
+          gridTemplateRows: isTextOnly
+            ? `1fr ${LAYOUT.footerHeight}px auto`
+            : `auto minmax(520px, 1fr) ${LAYOUT.footerHeight}px auto`,
           padding: `0 ${SPACE.xxl}px 0`,
           boxSizing: "border-box",
         }}
@@ -818,9 +1226,15 @@ function VerticalCard({
         <div
           style={{
             zIndex: 20,
-            maxWidth: LAYOUT.copyColumn,
+            maxWidth: isTextOnly ? LAYOUT.textOnlyCopyMax : LAYOUT.copyColumn,
+            margin: isTextOnly ? "0 auto" : undefined,
+            width: isTextOnly ? "100%" : undefined,
             paddingTop: instagramSafe ? 120 : SPACE.xl,
-            paddingBottom: 40,
+            paddingBottom: isTextOnly ? 0 : 40,
+            gridRow: 1,
+            minHeight: isTextOnly ? 0 : undefined,
+            display: isTextOnly ? "flex" : undefined,
+            flexDirection: isTextOnly ? "column" : undefined,
           }}
         >
           <LeftCopyStack
@@ -828,33 +1242,40 @@ function VerticalCard({
             headline={headline}
             subhead={subhead}
             supporting={supporting}
+            cta={cta}
             qrDataUrl={qrDataUrl}
             accentBar={templateDef?.copySchema.accentBar ?? variant === "split-clarity"}
             headlineSize="vertical"
             logoSizing={logoSizing}
             templateId={templateId}
             platform={platform}
+            proofType={proofType}
             iconLayout="grid"
+            compactIcons={layoutModes.compactIcons}
+            pinQrBottom={isTextOnly}
+            copyMaxWidth={isTextOnly ? LAYOUT.textOnlyCopyMax : undefined}
           />
         </div>
 
-        <div
-          style={{
-            position: "relative",
-            minHeight: 520,
-            overflow: "hidden",
-            marginTop: SPACE.md,
-            zIndex: 10,
-          }}
-        >
-          <AssetCompositor
-            templateId={templateId}
-            pillarId={contentPillarId}
-            variant="vertical"
-          />
-        </div>
+        {!isTextOnly && (
+          <div
+            style={{
+              position: "relative",
+              minHeight: 520,
+              overflow: "hidden",
+              marginTop: SPACE.md,
+              zIndex: 10,
+            }}
+          >
+            <AssetCompositor
+              templateId={templateId}
+              pillarId={contentPillarId}
+              variant="vertical"
+            />
+          </div>
+        )}
 
-        <TrustFooter />
+        <FooterAccentBar />
 
         <div style={{ padding: `${SPACE.sm}px 0 ${SPACE.lg}px`, zIndex: 20 }}>
           <LegalLine text={disclaimer} />
@@ -865,7 +1286,7 @@ function VerticalCard({
 }
 
 export const AdCardTemplate = forwardRef<HTMLDivElement, AdCardProps>(function AdCardTemplate(
-  { aspectRatio, qrDataUrl, layoutVariant, templateId, platform, ...props },
+  { aspectRatio, qrDataUrl, layoutVariant, layoutStyle, templateId, platform, canvasStyle, ...props },
   ref
 ) {
   return (
@@ -874,16 +1295,21 @@ export const AdCardTemplate = forwardRef<HTMLDivElement, AdCardProps>(function A
         <VerticalCard
           {...props}
           layoutVariant={layoutVariant}
+          layoutStyle={layoutStyle}
           templateId={templateId}
           platform={platform}
+          canvasStyle={canvasStyle}
           qrDataUrl={qrDataUrl}
         />
       ) : (
         <SquareCard
           {...props}
+          aspectRatio={aspectRatio}
           layoutVariant={layoutVariant}
+          layoutStyle={layoutStyle}
           templateId={templateId}
           platform={platform}
+          canvasStyle={canvasStyle}
           qrDataUrl={qrDataUrl}
         />
       )}

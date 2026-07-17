@@ -65,6 +65,12 @@ export function TopBar({ onMobileMenuOpen }: TopBarProps) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        <form action="/auth/signout" method="post">
+          <Button variant="ghost" size="sm" type="submit">
+            Sign out
+          </Button>
+        </form>
+
         <button
           onClick={toggleTheme}
           className={cn(

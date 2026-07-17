@@ -11,6 +11,7 @@ export function HomeRedirect() {
   const router = useRouter();
 
   useEffect(() => {
+    if (pathname.startsWith("/login") || pathname.startsWith("/auth")) return;
     if (sessionStorage.getItem(SESSION_KEY)) return;
 
     sessionStorage.setItem(SESSION_KEY, "1");

@@ -1,4 +1,5 @@
 import { VISUAL_TOKENS } from "@/lib/tokens";
+import { getPillarById } from "@/lib/knowledge/advisorpilot";
 import { getLayoutVariantForPillar, getTemplateForPillar } from "./ad-template-registry";
 import { sanitizeNoEmDash } from "./content-guardrails";
 import {
@@ -45,12 +46,27 @@ export interface PillarStep {
   description: string;
 }
 
+export const PILLAR_SHARED_PROOF_STEPS: PillarStep[] = [
+  {
+    icon: "users",
+    title: "Built by advisors, for advisors",
+    description: "Made by advisors who know the review grind.",
+  },
+  {
+    icon: "clock",
+    title: "Statement to PDF leave-behinds",
+    description: "Less time on analysis and prep. More time with clients.",
+  },
+  {
+    icon: "trend",
+    title: "Enterprise power for every advisor",
+    description: "Big-firm capability without big-firm overhead.",
+  },
+];
+
 export const PILLAR_STEPS: Record<string, PillarStep[]> = {
-  "prospect-workflow": [
-    { icon: "file", title: "Upload statements", description: "We extract what matters." },
-    { icon: "chart", title: "AI analyzes & organizes", description: "Holdings, fees, performance, risk." },
-    { icon: "check", title: "You review & deliver", description: "Professional, polished, and fast." },
-  ],
+  "prospect-workflow": PILLAR_SHARED_PROOF_STEPS,
+  "statement-intelligence": PILLAR_SHARED_PROOF_STEPS,
 };
 
 /** Pillar overrides — e.g. prospect-workflow uses dashboard style on split-office layout. */
@@ -193,24 +209,23 @@ export const PILLAR_FEATURES: Record<string, FeatureIcon[]> = {
 };
 
 export const PILLAR_HIGHLIGHTS: Record<string, string> = {
-  "prospect-workflow": "Never",
-  "statement-intelligence": "Holdings",
+  "prospect-workflow": "accelerated",
+  "statement-intelligence": "actionable",
   "portfolio-narrative": "Understand",
   "operational-scale": "Not",
   "compliance-posture": "Judgment",
 };
 
 export const PILLAR_SUPPORTING: Record<string, string> = {
-  "prospect-workflow":
-    "Analyze holdings. Generate insights. Prepare reviews. Stay organized.",
-  "statement-intelligence":
-    "Custodian PDFs in. Standardized holdings out. Ready for analysis.",
-  "portfolio-narrative":
-    "AdvisorPilot™ helps you analyze, summarize, and prepare, so you can focus on what matters most.",
-  "operational-scale":
-    "Smarter reviews. Stronger advice. Built for modern advisory teams.",
-  "compliance-posture":
-    "Operational analysis separated from fiduciary advice, built for disciplined firms.",
+  "prospect-workflow": "Statement in. Materials out. You stay in the room.",
+  "statement-intelligence": "PDFs in. Holdings confirmed. Analysis on solid ground.",
+  "portfolio-narrative": "Your judgment. AdvisorPilot drafts the story.",
+  "operational-scale": "More reviews. Same team. Stronger advice.",
+  "compliance-posture": "Every step logged. Every output traceable.",
+};
+
+export const PILLAR_OUTCOME: Record<string, string> = {
+  ...PILLAR_SUPPORTING,
 };
 
 export const FOOTER_TRUST: { icon: IconKey; label: string }[] = [
@@ -264,7 +279,28 @@ export function getHighlightForHeadline(headline: string, pillarId?: string): {
   return { before: headline, highlight: "", after: "" };
 }
 
+export function getOutcomeLine(pillarId?: string): string {
+  if (!pillarId) return "";
+  const pillar = getPillarById(pillarId);
+  if (pillar?.outcomeLine) return sanitizeNoEmDash(pillar.outcomeLine);
+  if (PILLAR_OUTCOME[pillarId]) return sanitizeNoEmDash(PILLAR_OUTCOME[pillarId]);
+  return "";
+}
+
 export function getSupportingLine(pillarId?: string): string {
+  const template = getTemplateForPillar(pillarId);
+
+  if (!template.copySchema.showSupportingLine) {
+    return "";
+  }
+
+  if (template.copySchema.proofType === "steps") {
+    return "";
+  }
+
+  const outcome = getOutcomeLine(pillarId);
+  if (outcome) return outcome;
+
   const line =
     pillarId && PILLAR_SUPPORTING[pillarId]
       ? PILLAR_SUPPORTING[pillarId]

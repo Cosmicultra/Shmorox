@@ -2,6 +2,7 @@ import {
   getPrimaryScreenshotForPillar,
   getProductScreenshotsPromptBlock,
 } from "../ad/product-screenshots";
+import { getPillarCopyGuardrailsPromptBlock } from "../ad/pillar-copy-guardrails";
 import { getPillarById } from "../knowledge/advisorpilot";
 import { getBrandDNA } from "./brand-dna";
 import type { CreativeBrief, CreativeDirectorInput } from "./types";
@@ -32,7 +33,8 @@ Subhead seed: ${pillar.subhead}
 CTA seed: ${pillar.cta}
 Pain: ${pillar.transformationBefore}
 After: ${pillar.transformationAfter}
-Primary UI: ${primaryUi?.title ?? "AdvisorPilot product"} — ${primaryUi?.description ?? ""}`
+Primary UI: ${primaryUi?.title ?? "AdvisorPilot product"} — ${primaryUi?.description ?? ""}
+${getPillarCopyGuardrailsPromptBlock(input.contentPillarId)}`
     : "";
 
   return `${brandContext}

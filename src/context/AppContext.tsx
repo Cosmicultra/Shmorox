@@ -1,12 +1,14 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { normalizeCampaign } from "@/lib/campaigns/normalize";
 import type { CampaignRun, ReviewResult, ReviewSubmission, SocialPlatform } from "@/lib/types";
 
 const REVIEWS_STORAGE_KEY = "shmorox-reviews";
 const CAMPAIGNS_STORAGE_KEY = "shmorox-campaigns";
 const SOCIAL_STORAGE_KEY = "shmorox-social-connections";
-const PERSIST_DEBOUNCE_MS = 400;
+const CAMPAIGNS_MIGRATED_KEY = "shmorox-campaigns-migrated";
+const PERSIST_DEBOUNCE_MS = 800;
 
 export interface SocialConnection {
   platform: SocialPlatform;
@@ -24,6 +26,7 @@ interface AppState {
   campaignsLoaded: boolean;
   addReview: (review: ReviewSubmission) => void;
   updateReview: (id: string, patch: Partial<ReviewSubmission>) => void;
+  deleteReview: (id: string) => void;
   setResult: (submissionId: string, result: ReviewResult) => void;
   getReview: (id: string) => ReviewSubmission | undefined;
   getResult: (id: string) => ReviewResult | undefined;
@@ -31,6 +34,7 @@ interface AppState {
   updateCampaign: (id: string, patch: Partial<CampaignRun>) => void;
   deleteCampaign: (id: string) => void;
   getCampaign: (id: string) => CampaignRun | undefined;
+  hydrateCampaign: (id: string) => Promise<void>;
   setSocialConnection: (connection: SocialConnection) => void;
   getSocialConnection: (platform: SocialPlatform) => SocialConnection | undefined;
 }
@@ -45,68 +49,17 @@ function useDebouncedEffect(effect: () => void, deps: unknown[], delayMs: number
   }, deps);
 }
 
-/** Base64 ad PNGs can be several MB each — never persist them in localStorage. */
-function stripCampaignForStorage(campaign: CampaignRun): CampaignRun {
-  return {
-    ...campaign,
-    ads: campaign.ads.map(({ imageDataUrl: _image, ...ad }) => ad),
-  };
-}
+async function persistCampaign(campaign: CampaignRun, isNew: boolean) {
+  const res = await fetch(isNew ? "/api/campaigns" : `/api/campaigns/${campaign.id}`, {
+    method: isNew ? "POST" : "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(campaign),
+  });
 
-function serializeCampaigns(campaigns: CampaignRun[]): string {
-  return JSON.stringify(campaigns.map(stripCampaignForStorage));
-}
-
-/** Backfill defaults for campaigns saved before schema changes. */
-function normalizeCampaign(raw: Partial<CampaignRun> & { id: string }): CampaignRun {
-  const phase = raw.phase ?? "generating";
-  const defaultStatus =
-    phase === "ready_to_post" || phase === "posted"
-      ? "approved"
-      : phase === "failed"
-        ? "failed"
-        : ["generating", "legal_review", "fixing", "packaging", "approved"].includes(phase)
-          ? "running"
-          : "draft";
-
-  return {
-    id: raw.id,
-    brand: "AdvisorPilot",
-    contentPillar: raw.contentPillar ?? "prospect-workflow",
-    platforms: raw.platforms ?? [],
-    phase,
-    status: raw.status ?? defaultStatus,
-    ads: Array.isArray(raw.ads) ? raw.ads : [],
-    legalReviewId: raw.legalReviewId,
-    iteration: raw.iteration ?? 0,
-    fixHistory: Array.isArray(raw.fixHistory) ? raw.fixHistory : [],
-    caption: raw.caption,
-    captionsByPlatform: raw.captionsByPlatform,
-    hashtags: Array.isArray(raw.hashtags) ? raw.hashtags : [],
-    hashtagsByPlatform: raw.hashtagsByPlatform,
-    qrUrl: raw.qrUrl ?? "",
-    progressMessage: raw.progressMessage,
-    creativeBrief: raw.creativeBrief,
-    originalBrief: raw.originalBrief,
-    creativeReview: raw.creativeReview,
-    strategyApproved: raw.strategyApproved,
-    strategyReviewHistory: raw.strategyReviewHistory,
-    finalStrategyRationale: raw.finalStrategyRationale,
-    conceptVariations: raw.conceptVariations,
-    visualDiversityReport: raw.visualDiversityReport,
-    variationGateHistory: raw.variationGateHistory,
-    selectedConcept: raw.selectedConcept,
-    creativeJob: raw.creativeJob,
-    masterImageUrl: raw.masterImageUrl,
-    imagesBlocked: raw.imagesBlocked,
-    creativePipelineStep: raw.creativePipelineStep,
-    adaptedImages: raw.adaptedImages,
-    selectionRationale: raw.selectionRationale,
-    createdAt: raw.createdAt ?? new Date().toISOString(),
-    completedAt: raw.completedAt,
-    postedAt: raw.postedAt,
-    postResults: raw.postResults,
-  };
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Failed to save campaign (${res.status})`);
+  }
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -116,12 +69,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [socialConnections, setSocialConnections] = useState<SocialConnection[]>([]);
   const [storageReady, setStorageReady] = useState(false);
   const [campaignsLoaded, setCampaignsLoaded] = useState(false);
-  const [campaignsPersistReady, setCampaignsPersistReady] = useState(false);
 
   const reviewsRef = useRef(reviews);
   const resultsRef = useRef(results);
   const campaignsRef = useRef(campaigns);
   const socialConnectionsRef = useRef(socialConnections);
+  const pendingSaveIdsRef = useRef<Set<string>>(new Set());
+  const newCampaignIdsRef = useRef<Set<string>>(new Set());
+  const hydratingIdsRef = useRef<Set<string>>(new Set());
 
   reviewsRef.current = reviews;
   resultsRef.current = results;
@@ -148,41 +103,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setStorageReady(true);
 
-    const loadCampaigns = () => {
-      if (cancelled) return;
+    const loadCampaigns = async () => {
       try {
-        const campaignsRaw = localStorage.getItem(CAMPAIGNS_STORAGE_KEY);
-        if (campaignsRaw) {
-          const parsed = (JSON.parse(campaignsRaw) as Partial<CampaignRun>[])
-            .filter((c): c is Partial<CampaignRun> & { id: string } => typeof c?.id === "string")
-            .map(normalizeCampaign);
-          const hadImages = parsed.some((c) => c.ads.some((a) => a.imageDataUrl));
-          const stripped = parsed.map(stripCampaignForStorage);
-          setCampaigns((prev) => {
-            const byId = new Map(stripped.map((campaign) => [campaign.id, campaign]));
-            for (const campaign of prev) {
-              byId.set(campaign.id, campaign);
+        const res = await fetch("/api/campaigns");
+        if (!res.ok) throw new Error("Failed to load campaigns");
+
+        let loaded: CampaignRun[] = [];
+        const payload = await res.json();
+        loaded = (payload.campaigns ?? []).map((c: Partial<CampaignRun> & { id: string }) =>
+          normalizeCampaign(c)
+        );
+
+        if (loaded.length === 0 && !localStorage.getItem(CAMPAIGNS_MIGRATED_KEY)) {
+          const legacyRaw = localStorage.getItem(CAMPAIGNS_STORAGE_KEY);
+          if (legacyRaw) {
+            const legacy = (JSON.parse(legacyRaw) as Partial<CampaignRun>[])
+              .filter((c): c is Partial<CampaignRun> & { id: string } => typeof c?.id === "string")
+              .map(normalizeCampaign);
+
+            for (const campaign of legacy) {
+              await persistCampaign(campaign, true);
             }
-            return Array.from(byId.values()).sort(
-              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-          });
-          if (hadImages) {
-            localStorage.setItem(CAMPAIGNS_STORAGE_KEY, serializeCampaigns(stripped));
+
+            loaded = legacy;
+            localStorage.setItem(CAMPAIGNS_MIGRATED_KEY, "1");
+            localStorage.removeItem(CAMPAIGNS_STORAGE_KEY);
           }
         }
-        if (!cancelled) setCampaignsPersistReady(true);
+
+        if (!cancelled) {
+          setCampaigns(
+            loaded.sort(
+              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            )
+          );
+        }
       } catch {
-        /* corrupt campaign storage — do not overwrite saved data with an empty array */
+        /* keep empty — user may be offline or migrations not run yet */
       }
+
       if (!cancelled) setCampaignsLoaded(true);
     };
 
-    if (typeof requestIdleCallback !== "undefined") {
-      requestIdleCallback(loadCampaigns, { timeout: 500 });
-    } else {
-      setTimeout(loadCampaigns, 0);
-    }
+    loadCampaigns();
 
     return () => {
       cancelled = true;
@@ -198,14 +161,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [reviews, results, storageReady], PERSIST_DEBOUNCE_MS);
 
   useDebouncedEffect(() => {
-    if (!campaignsLoaded || !campaignsPersistReady) return;
-    localStorage.setItem(CAMPAIGNS_STORAGE_KEY, serializeCampaigns(campaignsRef.current));
-  }, [campaigns, campaignsLoaded, campaignsPersistReady], PERSIST_DEBOUNCE_MS);
+    if (!campaignsLoaded) return;
+
+    const ids = Array.from(pendingSaveIdsRef.current);
+    pendingSaveIdsRef.current.clear();
+
+    for (const id of ids) {
+      const campaign = campaignsRef.current.find((c) => c.id === id);
+      if (!campaign) continue;
+
+      const isNew = newCampaignIdsRef.current.has(id);
+      if (isNew) newCampaignIdsRef.current.delete(id);
+
+      persistCampaign(campaign, isNew).catch((err) => {
+        console.error("Campaign save failed:", err);
+      });
+    }
+  }, [campaigns, campaignsLoaded], PERSIST_DEBOUNCE_MS);
 
   useDebouncedEffect(() => {
     if (!storageReady) return;
     localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(socialConnectionsRef.current));
   }, [socialConnections, storageReady], PERSIST_DEBOUNCE_MS);
+
+  const queueCampaignSave = useCallback((id: string) => {
+    pendingSaveIdsRef.current.add(id);
+  }, []);
 
   const addReview = useCallback((review: ReviewSubmission) => {
     setReviews((prev) => [review, ...prev]);
@@ -215,6 +196,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }, []);
 
+  const deleteReview = useCallback(
+    (id: string) => {
+      setReviews((prev) => prev.filter((r) => r.id !== id));
+      setResults((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+
+      setCampaigns((prev) => {
+        let changed = false;
+        const next = prev.map((c) => {
+          if (c.legalReviewId !== id) return c;
+          changed = true;
+          queueCampaignSave(c.id);
+          return { ...c, legalReviewId: undefined };
+        });
+        return changed ? next : prev;
+      });
+    },
+    [queueCampaignSave]
+  );
+
   const setResult = useCallback((submissionId: string, result: ReviewResult) => {
     setResults((prev) => ({ ...prev, [submissionId]: result }));
   }, []);
@@ -222,22 +226,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getReview = useCallback((id: string) => reviews.find((r) => r.id === id), [reviews]);
   const getResult = useCallback((id: string) => results[id], [results]);
 
-  const addCampaign = useCallback((campaign: CampaignRun) => {
-    setCampaignsPersistReady(true);
-    setCampaigns((prev) => [campaign, ...prev]);
-  }, []);
+  const addCampaign = useCallback(
+    (campaign: CampaignRun) => {
+      newCampaignIdsRef.current.add(campaign.id);
+      queueCampaignSave(campaign.id);
+      setCampaigns((prev) => [campaign, ...prev]);
+    },
+    [queueCampaignSave]
+  );
 
-  const updateCampaign = useCallback((id: string, patch: Partial<CampaignRun>) => {
-    setCampaignsPersistReady(true);
-    setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-  }, []);
+  const updateCampaign = useCallback(
+    (id: string, patch: Partial<CampaignRun>) => {
+      queueCampaignSave(id);
+      setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    },
+    [queueCampaignSave]
+  );
 
-  const deleteCampaign = useCallback((id: string) => {
+  const deleteCampaign = useCallback(async (id: string) => {
     let linkedReviewId: string | undefined;
+
     setCampaigns((prev) => {
       linkedReviewId = prev.find((c) => c.id === id)?.legalReviewId;
       return prev.filter((c) => c.id !== id);
     });
+
+    pendingSaveIdsRef.current.delete(id);
+    newCampaignIdsRef.current.delete(id);
+
     if (linkedReviewId) {
       setReviews((reviews) => reviews.filter((r) => r.id !== linkedReviewId));
       setResults((results) => {
@@ -246,9 +262,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next;
       });
     }
+
+    try {
+      await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
+    } catch (err) {
+      console.error("Campaign delete failed:", err);
+    }
   }, []);
 
   const getCampaign = useCallback((id: string) => campaigns.find((c) => c.id === id), [campaigns]);
+
+  const hydrateCampaign = useCallback(
+    async (id: string) => {
+      if (hydratingIdsRef.current.has(id)) return;
+      hydratingIdsRef.current.add(id);
+
+      try {
+        const res = await fetch(`/api/campaigns/${id}`);
+        if (!res.ok) return;
+
+        const { campaign } = await res.json();
+        if (!campaign) return;
+
+        setCampaigns((prev) => {
+          const normalized = normalizeCampaign(campaign);
+          const exists = prev.some((c) => c.id === id);
+          if (!exists) return [normalized, ...prev];
+          return prev.map((c) => (c.id === id ? { ...c, ...normalized } : c));
+        });
+      } catch {
+        /* ignore */
+      } finally {
+        hydratingIdsRef.current.delete(id);
+      }
+    },
+    []
+  );
 
   const setSocialConnection = useCallback((connection: SocialConnection) => {
     setSocialConnections((prev) => {
@@ -272,6 +321,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       campaignsLoaded,
       addReview,
       updateReview,
+      deleteReview,
       setResult,
       getReview,
       getResult,
@@ -279,6 +329,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateCampaign,
       deleteCampaign,
       getCampaign,
+      hydrateCampaign,
       setSocialConnection,
       getSocialConnection,
     }),
@@ -291,6 +342,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       campaignsLoaded,
       addReview,
       updateReview,
+      deleteReview,
       setResult,
       getReview,
       getResult,
@@ -298,6 +350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateCampaign,
       deleteCampaign,
       getCampaign,
+      hydrateCampaign,
       setSocialConnection,
       getSocialConnection,
     ]

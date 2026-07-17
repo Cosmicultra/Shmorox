@@ -59,8 +59,10 @@ export default function RenderAdPage({ searchParams }: RenderAdPageProps) {
         aspectRatio={ad.aspectRatio}
         contentPillarId={ad.contentPillarId}
         layoutVariant={ad.layoutVariant}
+        layoutStyle={ad.layoutStyle}
         templateId={ad.templateId}
         platform={ad.platform}
+        canvasStyle={ad.canvasStyle}
         qrDataUrl={qrDataUrl}
       />
     </div>

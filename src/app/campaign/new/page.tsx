@@ -23,6 +23,7 @@ import { SlidePanel } from "@/components/motion";
 import { generateId } from "@/lib/utils";
 import { ADVISORPILOT_KNOWLEDGE } from "@/lib/knowledge/advisorpilot";
 import { SOCIAL_PLATFORMS, type SocialPlatform, type CampaignRun } from "@/lib/types";
+import type { AdLayoutStyle, CanvasStyle } from "@/lib/ad/ad-template-registry";
 import { buildDemoUrl } from "@/lib/knowledge/advisorpilot";
 
 const STEPS = ["Content Pillar", "Platforms", "Confirm", "Launch"];
@@ -47,6 +48,8 @@ export default function NewCampaignPage() {
     "tiktok",
   ]);
   const [generateConceptImages, setGenerateConceptImages] = useState(false);
+  const [layoutStyle, setLayoutStyle] = useState<AdLayoutStyle>("split-graphic");
+  const [canvasStyle, setCanvasStyle] = useState<CanvasStyle>("gradient");
 
   const togglePlatform = (platform: SocialPlatform) => {
     setPlatforms((prev) =>
@@ -70,6 +73,8 @@ export default function NewCampaignPage() {
       contentPillar: contentPillar,
       platforms,
       generateConceptImages,
+      layoutStyle,
+      canvasStyle,
       phase: "generating",
       status: "running",
       ads: [],
@@ -173,6 +178,73 @@ export default function NewCampaignPage() {
                   );
                 })}
               </div>
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-primary">Layout style</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        id: "split-graphic" as const,
+                        title: "Split with product graphic",
+                        description: "Copy on the left, lifestyle photo and UI on the right.",
+                      },
+                      {
+                        id: "text-only" as const,
+                        title: "Text-only",
+                        description: "No graphic — full-width copy for LinkedIn A/B testing.",
+                      },
+                    ] as const
+                  ).map((option) => (
+                    <SelectionTile
+                      key={option.id}
+                      selected={layoutStyle === option.id}
+                      onClick={() => {
+                        setLayoutStyle(option.id);
+                        if (option.id === "text-only") setCanvasStyle("clean");
+                      }}
+                    >
+                      <p className="font-medium">{option.title}</p>
+                      <p
+                        className={`mt-1 text-xs ${layoutStyle === option.id ? "text-inverse/70" : "text-secondary"}`}
+                      >
+                        {option.description}
+                      </p>
+                    </SelectionTile>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-primary">Background</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        id: "gradient" as const,
+                        title: "Soft gradient",
+                        description: "Current branded canvas with subtle texture.",
+                      },
+                      {
+                        id: "clean" as const,
+                        title: "Clean white",
+                        description: "Flat white background — recommended for LinkedIn static.",
+                      },
+                    ] as const
+                  ).map((option) => (
+                    <SelectionTile
+                      key={option.id}
+                      selected={canvasStyle === option.id}
+                      onClick={() => setCanvasStyle(option.id)}
+                    >
+                      <p className="font-medium">{option.title}</p>
+                      <p
+                        className={`mt-1 text-xs ${canvasStyle === option.id ? "text-inverse/70" : "text-secondary"}`}
+                      >
+                        {option.description}
+                      </p>
+                    </SelectionTile>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -202,6 +274,14 @@ export default function NewCampaignPage() {
                       const config = SOCIAL_PLATFORMS.find((sp) => sp.id === p);
                       return sum + (config?.aspectRatios.length ?? 0);
                     }, 0)} cards (1:1 + 9:16)`,
+                  ],
+                  [
+                    "Layout",
+                    layoutStyle === "text-only" ? "Text-only" : "Split with product graphic",
+                  ],
+                  [
+                    "Background",
+                    canvasStyle === "clean" ? "Clean white" : "Soft gradient",
                   ],
                 ].map(([label, value]) => (
                   <div key={label} className="flex gap-4 px-4 py-3 sm:px-5">

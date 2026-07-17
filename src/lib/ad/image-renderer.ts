@@ -184,8 +184,10 @@ export async function renderAdToImage(
       aspectRatio: enriched.aspectRatio,
       contentPillarId: enriched.contentPillarId,
       layoutVariant: enriched.layoutVariant,
+      layoutStyle: enriched.layoutStyle,
       templateId: enriched.templateId,
       platform: enriched.platform,
+      canvasStyle: enriched.canvasStyle,
       qrDataUrl,
     })
   );

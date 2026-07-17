@@ -4,6 +4,8 @@ import {
   buildContentFromAd,
   buildLayoutSpecFromAd,
   isSupportingRedundant,
+  resolveAdLayoutModes,
+  tokenizeForOverlap,
   type AdCreativeContent,
   type AdLayoutSpec,
 } from "./ad-creative-content";
@@ -12,7 +14,9 @@ import {
   getCopyLimitsForTemplate,
   getTemplateForPillar,
 } from "./ad-template-registry";
-import { getScreenshotForTemplate } from "./asset-pack";
+import { getScreenshotForTemplate, getScreenAnchor } from "./asset-pack";
+import { evaluateCopyColumnFitFromAd } from "./ad-layout-fit";
+import { lintProductClarity } from "./product-clarity";
 import { computeLogoSizing } from "./logo-sizing";
 import { LAYOUT } from "./ad-design-system";
 import { getStepsForPillar, getSupportingLine, usesStepList } from "./visual-config";
@@ -85,7 +89,8 @@ function lintLogoVsQr(
     headlineLineCount: content.headline.split("\n").filter(Boolean).length,
     subheadLength: content.subhead.length,
     supportingLength: content.supportingLine.length,
-    hasFeatureIcons: !stepList,
+    hasFeatureIcons: template.copySchema.proofType === "icons",
+    hasValueProps: template.copySchema.proofType === "none",
     hasStepList: stepList,
     hasAccentBar: template.copySchema.accentBar,
     qrPresent: true,
@@ -118,6 +123,8 @@ function lintSafeZone(layout: AdLayoutSpec): LayoutLintIssue[] {
 }
 
 function lintScreenshot(layout: AdLayoutSpec): LayoutLintIssue[] {
+  if (layout.templateId === "text-focused") return [];
+
   const screen = getScreenshotForTemplate(
     layout.templateId,
     layout.contentPillarId,
@@ -132,6 +139,69 @@ function lintScreenshot(layout: AdLayoutSpec): LayoutLintIssue[] {
       code: "MISSING_SCREENSHOT",
       message: `No product screenshot mapped for template ${layout.templateId}.`,
       severity: "error",
+    },
+  ];
+}
+
+function lintStepsPlusSupporting(
+  content: AdCreativeContent,
+  layout: AdLayoutSpec
+): LayoutLintIssue[] {
+  const template = AD_TEMPLATE_REGISTRY[layout.templateId];
+  if (template.copySchema.proofType !== "steps") return [];
+  if (!content.supportingLine.trim()) return [];
+
+  return [
+    {
+      code: "STEPS_PLUS_SUPPORTING",
+      message:
+        "Step templates must not render a supporting line — it will be suppressed at render.",
+      severity: "warning",
+    },
+  ];
+}
+
+function lintCopyLadderViolation(
+  content: AdCreativeContent,
+  layout: AdLayoutSpec
+): LayoutLintIssue[] {
+  const steps = getStepsForPillar(layout.contentPillarId);
+  if (!steps?.length || !content.subhead.trim()) return [];
+
+  const subTokens = new Set(tokenizeForOverlap(content.subhead));
+  let overlappingSteps = 0;
+
+  for (const step of steps) {
+    const stepTokens = tokenizeForOverlap(`${step.title} ${step.description ?? ""}`);
+    if (!stepTokens.length) continue;
+    const overlap = stepTokens.filter((t) => subTokens.has(t)).length;
+    if (overlap / stepTokens.length >= 0.35) overlappingSteps++;
+  }
+
+  if (overlappingSteps >= 2) {
+    return [
+      {
+        code: "COPY_LADDER_VIOLATION",
+        message: `Subhead overlaps ${overlappingSteps} step descriptions — tighten hook vs proof ladder.`,
+        severity: "warning",
+      },
+    ];
+  }
+  return [];
+}
+
+function lintRightPanelUnderfilled(layout: AdLayoutSpec): LayoutLintIssue[] {
+  if (layout.templateId !== "split-dashboard") return [];
+
+  const anchor = getScreenAnchor(layout.templateId, layout.aspectRatio);
+  const widthPct = parseFloat(anchor.width);
+  if (Number.isNaN(widthPct) || widthPct >= 78) return [];
+
+  return [
+    {
+      code: "RIGHT_PANEL_UNDERFILLED",
+      message: `Dashboard hero width (${anchor.width}) may underfill the right panel — target ≥78%.`,
+      severity: "warning",
     },
   ];
 }
@@ -185,6 +255,46 @@ function lintVerticalCopyDensity(
   return [];
 }
 
+function lintCopyColumnFit(
+  content: AdCreativeContent,
+  layout: AdLayoutSpec
+): LayoutLintIssue[] {
+  const rawSupporting = getSupportingLine(layout.contentPillarId);
+  const modes = resolveAdLayoutModes(content.headline, content.subhead, layout, rawSupporting);
+  const fit = evaluateCopyColumnFitFromAd(content, layout, modes);
+  const issues: LayoutLintIssue[] = [];
+
+  if (fit.overlaps.length > 0) {
+    issues.push({
+      code: "COPY_ELEMENT_OVERLAP",
+      message: `Copy column elements overlap (${fit.overlaps
+        .map((o) => `${o.a}/${o.b}`)
+        .join(", ")}). Shorten copy or reduce proof density.`,
+      severity: "error",
+    });
+  }
+
+  if (fit.overflowPx > 8) {
+    issues.push({
+      code: "COPY_COLUMN_OVERFLOW",
+      message: `Copy column exceeds available space by ~${Math.round(
+        fit.overflowPx
+      )}px — content may collide with QR or clip.`,
+      severity: "error",
+    });
+  } else if (fit.overflowPx > 0) {
+    issues.push({
+      code: "COPY_COLUMN_TIGHT",
+      message: `Copy column is tight (${Math.round(
+        fit.overflowPx
+      )}px from QR zone) — consider shorter subhead.`,
+      severity: "warning",
+    });
+  }
+
+  return issues;
+}
+
 export function lintAdLayout(ad: GeneratedAd): LayoutLintResult {
   const content = buildContentFromAd(ad);
   const layout = buildLayoutSpecFromAd(ad);
@@ -192,9 +302,14 @@ export function lintAdLayout(ad: GeneratedAd): LayoutLintResult {
   const issues = [
     ...lintCopyLength(content, layout),
     ...lintEmDash(content),
+    ...lintProductClarity({ pillarId: layout.contentPillarId, subhead: content.subhead }),
     ...lintLogoVsQr(content, layout),
     ...lintSafeZone(layout),
     ...lintScreenshot(layout),
+    ...lintStepsPlusSupporting(content, layout),
+    ...lintCopyLadderViolation(content, layout),
+    ...lintRightPanelUnderfilled(layout),
+    ...lintCopyColumnFit(content, layout),
     ...lintSupportingRedundancy(content, layout),
     ...lintVerticalCopyDensity(content, layout),
   ];

@@ -18,8 +18,8 @@ export const LAYOUT = {
   squareHeight: 1080,
   verticalWidth: 1080,
   verticalHeight: 1920,
-  /** Left copy column — ~48% of canvas (matches reference ads) */
-  copyColumn: 520,
+  /** Left copy column — ~56% of canvas */
+  copyColumn: 600,
   /** Product column bleed past right edge */
   productBleed: 32,
   /** QR is the only CTA on exported ads */
@@ -30,9 +30,12 @@ export const LAYOUT = {
   logoMaxHeight: 248,
   /** Typical logo+tagline aspect (width / height) */
   logoAspectRatio: 2.65,
-  footerHeight: 56,
+  /** Slim accent bar — value props live in copy column */
+  footerHeight: 8,
+  /** Full-width copy for text-only layout */
+  textOnlyCopyMax: 920,
   /** Right visual column width (square canvas minus copy column) */
-  visualPanelWidth: 560,
+  visualPanelWidth: 480,
 } as const;
 
 export const TYPE = {
@@ -40,14 +43,25 @@ export const TYPE = {
   displayMd: { size: 58, lineHeight: 1.06, weight: 600, tracking: "-0.03em" },
   displaySm: { size: 52, lineHeight: 1.06, weight: 600, tracking: "-0.03em" },
   bodyLg: { size: 20, lineHeight: 1.45, weight: 400, tracking: "-0.012em" },
-  bodyMd: { size: 17, lineHeight: 1.5, weight: 400, tracking: "-0.01em" },
-  bodySm: { size: 14, lineHeight: 1.45, weight: 400, tracking: "-0.008em" },
+  bodyMd: { size: 20, lineHeight: 1.5, weight: 400, tracking: "-0.01em" },
+  whatWeDo: { size: 22, lineHeight: 1.45, weight: 500, tracking: "-0.01em" },
+  bodySm: { size: 16, lineHeight: 1.45, weight: 400, tracking: "-0.008em" },
+  valueProp: { size: 17, lineHeight: 1.35, weight: 600, tracking: "-0.005em" },
+  productCategory: { size: 16, lineHeight: 1.3, weight: 600, tracking: "0.02em" },
   label: { size: 10, lineHeight: 1.3, weight: 600, tracking: "0.12em" },
   stepTitle: { size: 15, lineHeight: 1.3, weight: 600, tracking: "-0.01em" },
   stepDesc: { size: 13, lineHeight: 1.4, weight: 400, tracking: "-0.005em" },
-  cta: { size: 16, lineHeight: 1, weight: 600, tracking: "-0.01em" },
+  cta: { size: 20, lineHeight: 1.2, weight: 600, tracking: "-0.01em" },
   legal: { size: 7.5, lineHeight: 1.45, weight: 400, tracking: "0" },
   trust: { size: 11, lineHeight: 1.35, weight: 500, tracking: "-0.005em" },
+  /** Larger type scale for centered text-only 1:1 cards */
+  textOnly: {
+    productCategory: { size: 18, lineHeight: 1.3, weight: 600, tracking: "0.02em" },
+    headline: { size: 64, lineHeight: 1.05, weight: 600, tracking: "-0.03em" },
+    whatWeDo: { size: 26, lineHeight: 1.4, weight: 500, tracking: "-0.01em" },
+    valueProp: { size: 19, lineHeight: 1.4, weight: 600, tracking: "-0.005em" },
+    cta: { size: 24, lineHeight: 1.2, weight: 600, tracking: "-0.01em" },
+  },
 } as const;
 
 export const ELEVATION = {
