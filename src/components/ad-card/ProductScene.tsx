@@ -520,6 +520,8 @@ const SCENES: Record<string, ReactNode> = {
   "portfolio-narrative": <NarrativeScene />,
   "operational-scale": <ScaleScene />,
   "compliance-posture": <ComplianceScene />,
+  "company-launch": <ClientReviewDashboard />,
+  "custom-request": <ClientReviewDashboard />,
 };
 
 function ScreenshotScene({ pillarId }: { pillarId?: string }) {

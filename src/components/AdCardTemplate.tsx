@@ -4,7 +4,7 @@ import { forwardRef, type CSSProperties, type ReactNode } from "react";
 import { ADVISORPILOT_KNOWLEDGE, getPillarById } from "@/lib/knowledge/advisorpilot";
 import type { AspectRatio } from "@/lib/types";
 import { BRAND_TOKENS as T } from "@/lib/tokens";
-import { sanitizeNoEmDash } from "@/lib/ad/content-guardrails";
+import { sanitizeNoEmDash, formatAdCardDisplayCopy } from "@/lib/ad/content-guardrails";
 import {
   ELEVATION,
   FONT_BODY,
@@ -26,13 +26,13 @@ import { getScreenshotForTemplate } from "@/lib/ad/asset-pack";
 import {
   getProductClarityForPillar,
   resolveWhatWeDoCopy,
-  TRUST_BADGE,
 } from "@/lib/ad/product-clarity";
 import {
   getFeaturesForPillar,
   getStepsForPillar,
   getSupportingLine,
   usesStepList,
+  getEffectiveProofType,
   type LayoutVariant,
 } from "@/lib/ad/visual-config";
 
@@ -300,7 +300,7 @@ function FeatureIconRow({
           <FeatureIconCircle
             key={feature.label}
             icon={feature.icon}
-            label={feature.label}
+            label={formatAdCardDisplayCopy(feature.label)}
             align={align}
             size={iconSize}
             labelSize={labelSize}
@@ -326,7 +326,7 @@ function FeatureIconRow({
         <FeatureIconCircle
           key={feature.label}
           icon={feature.icon}
-          label={feature.label}
+          label={formatAdCardDisplayCopy(feature.label)}
           align={align}
           size={iconSize}
           labelSize={labelSize}
@@ -384,7 +384,7 @@ function StepList({
                 color: T.navy,
               }}
             >
-              {step.title}
+              {formatAdCardDisplayCopy(step.title)}
             </div>
             <div
               style={{
@@ -394,12 +394,73 @@ function StepList({
                 color: T.slate,
               }}
             >
-              {step.description}
+              {formatAdCardDisplayCopy(step.description)}
             </div>
           </div>
         </div>
       ))}
     </div>
+  );
+}
+
+function PillarProofBullets({
+  pillarId,
+  compact = false,
+  centered = false,
+  fontSize: fontSizeOverride,
+}: {
+  pillarId?: string;
+  compact?: boolean;
+  centered?: boolean;
+  fontSize?: number;
+}) {
+  const steps = getStepsForPillar(pillarId);
+  if (!steps?.length) return null;
+
+  const fontSize = fontSizeOverride ?? (compact ? TYPE.valueProp.size - 1 : TYPE.valueProp.size);
+
+  return (
+    <ul
+      style={{
+        listStyle: "none",
+        margin: `${compact ? SPACE.md : SPACE.lg}px 0 0`,
+        padding: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: compact ? SPACE.sm : SPACE.md,
+        alignItems: centered ? "center" : "flex-start",
+      }}
+    >
+      {steps.map((step) => (
+        <li
+          key={step.title}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: SPACE.sm,
+            fontSize,
+            fontWeight: TYPE.valueProp.weight,
+            lineHeight: TYPE.valueProp.lineHeight,
+            letterSpacing: TYPE.valueProp.tracking,
+            color: T.navy,
+            maxWidth: centered ? "92%" : undefined,
+            textAlign: centered ? "center" : "left",
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: T.blue,
+              flexShrink: 0,
+            }}
+          />
+          {formatAdCardDisplayCopy(step.title)}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -418,7 +479,7 @@ function CapabilityValueBand({
 }) {
   const clarity = getProductClarityForPillar(pillarId);
   const fontSize = fontSizeOverride ?? (compact ? TYPE.valueProp.size - 1 : TYPE.valueProp.size);
-  const items = [clarity.whoItsFor, clarity.whyDifferent, TRUST_BADGE];
+  const items = [clarity.whoItsFor, clarity.whyDifferent].filter(Boolean);
 
   if (layout === "bullets") {
     return (
@@ -457,7 +518,7 @@ function CapabilityValueBand({
                 flexShrink: 0,
               }}
             />
-            {item}
+            {formatAdCardDisplayCopy(item)}
           </li>
         ))}
       </ul>
@@ -494,7 +555,7 @@ function CapabilityValueBand({
               |
             </span>
           ) : null}
-          {item}
+          {formatAdCardDisplayCopy(item)}
         </span>
       ))}
     </div>
@@ -524,10 +585,11 @@ function FeatureBlock({
   compactSteps?: boolean;
   compactIcons?: boolean;
 }) {
-  if (proofType === "steps" && usesStepList(pillarId)) {
+  const effectiveProof = getEffectiveProofType(proofType, pillarId);
+  if (effectiveProof === "steps" && usesStepList(pillarId)) {
     return <StepList pillarId={pillarId} compact={compactSteps} />;
   }
-  if (proofType === "icons") {
+  if (effectiveProof === "icons") {
     return (
       <FeatureIconRow pillarId={pillarId} layout={iconLayout} compact={compactIcons} />
     );
@@ -625,6 +687,7 @@ function LeftCopyStack({
   const whatWeDoSpec = textOnlyMode ? textOnlyType.whatWeDo : TYPE.whatWeDo;
   const ctaSpec = textOnlyMode ? textOnlyType.cta : TYPE.cta;
   const centered = textOnlyMode;
+  const effectiveProofType = getEffectiveProofType(proofType ?? "none", contentPillarId);
 
   return (
     <div
@@ -662,7 +725,7 @@ function LeftCopyStack({
           textTransform: "uppercase",
         }}
       >
-        {clarity.productCategory}
+        {formatAdCardDisplayCopy(clarity.productCategory)}
       </p>
 
       {accentBar && (
@@ -693,16 +756,35 @@ function LeftCopyStack({
           color: T.slate,
         }}
       >
-        {whatWeDo}
+        {formatAdCardDisplayCopy(whatWeDo)}
       </p>
 
-      <CapabilityValueBand
-        pillarId={contentPillarId}
-        compact={compactSteps || compactIcons}
-        layout="bullets"
-        centered={centered}
-        fontSize={textOnlyMode ? textOnlyType.valueProp.size : undefined}
-      />
+      {effectiveProofType === "steps" && usesStepList(contentPillarId) ? (
+        textOnlyMode ? (
+          <PillarProofBullets
+            pillarId={contentPillarId}
+            compact={compactSteps || compactIcons}
+            centered={centered}
+            fontSize={textOnlyType.valueProp.size}
+          />
+        ) : (
+          <StepList pillarId={contentPillarId} compact={compactSteps} />
+        )
+      ) : effectiveProofType === "icons" ? (
+        <FeatureIconRow
+          pillarId={contentPillarId}
+          layout={iconLayout}
+          compact={compactIcons}
+        />
+      ) : (
+        <CapabilityValueBand
+          pillarId={contentPillarId}
+          compact={compactSteps || compactIcons}
+          layout="bullets"
+          centered={centered}
+          fontSize={textOnlyMode ? textOnlyType.valueProp.size : undefined}
+        />
+      )}
       </div>
 
       <div
@@ -770,12 +852,12 @@ function SplitLayoutCard({
   platform?: SocialPlatform;
   canvasStyle?: CanvasStyle;
 }) {
-  const headline = sanitizeNoEmDash(h);
-  const subhead = sanitizeNoEmDash(s);
+  const headline = formatAdCardDisplayCopy(h);
+  const subhead = formatAdCardDisplayCopy(s);
   const disclaimer = sanitizeNoEmDash(d);
-  const cta = sanitizeNoEmDash(ctaProp);
+  const cta = formatAdCardDisplayCopy(ctaProp);
   const templateDef = AD_TEMPLATE_REGISTRY[templateId];
-  const proofType = templateDef.copySchema.proofType;
+  const proofType = getEffectiveProofType(templateDef.copySchema.proofType, contentPillarId);
   const layoutModes = resolveCardLayoutModes(
     headline,
     subhead,
@@ -795,7 +877,7 @@ function SplitLayoutCard({
     supporting,
     hasAccentBar: accentBar,
     hasStepList: stepList,
-    hasValueProps: true,
+    hasValueProps: proofType === "none",
     hasFeatureIcons: proofType === "icons",
     qrDataUrl,
   });
@@ -887,12 +969,12 @@ function TextOnlyLayoutCard({
   platform?: SocialPlatform;
   canvasStyle?: CanvasStyle;
 }) {
-  const headline = sanitizeNoEmDash(h);
-  const subhead = sanitizeNoEmDash(s);
+  const headline = formatAdCardDisplayCopy(h);
+  const subhead = formatAdCardDisplayCopy(s);
   const disclaimer = sanitizeNoEmDash(d);
-  const cta = sanitizeNoEmDash(ctaProp);
+  const cta = formatAdCardDisplayCopy(ctaProp);
   const templateDef = AD_TEMPLATE_REGISTRY[templateId];
-  const proofType = templateDef.copySchema.proofType;
+  const proofType = getEffectiveProofType(templateDef.copySchema.proofType, contentPillarId);
   const layoutModes = resolveCardLayoutModes(
     headline,
     subhead,
@@ -908,7 +990,7 @@ function TextOnlyLayoutCard({
     headline,
     subhead,
     supporting,
-    hasValueProps: true,
+    hasValueProps: proofType === "none",
     hasFeatureIcons: proofType === "icons",
     hasStepList: proofType === "steps" && usesStepList(contentPillarId),
     qrDataUrl,
@@ -996,12 +1078,12 @@ function DiagonalGrowthCard({
   platform?: SocialPlatform;
   canvasStyle?: CanvasStyle;
 }) {
-  const headline = sanitizeNoEmDash(h);
-  const subhead = sanitizeNoEmDash(s);
+  const headline = formatAdCardDisplayCopy(h);
+  const subhead = formatAdCardDisplayCopy(s);
   const disclaimer = sanitizeNoEmDash(d);
-  const cta = sanitizeNoEmDash(ctaProp);
+  const cta = formatAdCardDisplayCopy(ctaProp);
   const templateDef = AD_TEMPLATE_REGISTRY[templateId];
-  const proofType = templateDef.copySchema.proofType;
+  const proofType = getEffectiveProofType(templateDef.copySchema.proofType, contentPillarId);
   const layoutModes = resolveCardLayoutModes(
     headline,
     subhead,
@@ -1017,7 +1099,7 @@ function DiagonalGrowthCard({
     headline,
     subhead,
     supporting,
-    hasValueProps: true,
+    hasValueProps: proofType === "none",
     hasFeatureIcons: proofType === "icons",
     hasStepList: proofType === "steps" && usesStepList(contentPillarId),
     qrDataUrl,
@@ -1176,14 +1258,14 @@ function VerticalCard({
   canvasStyle,
   qrDataUrl,
 }: Omit<AdCardProps, "aspectRatio" | "showQR">) {
-  const headline = sanitizeNoEmDash(h);
-  const subhead = sanitizeNoEmDash(s);
+  const headline = formatAdCardDisplayCopy(h);
+  const subhead = formatAdCardDisplayCopy(s);
   const disclaimer = sanitizeNoEmDash(d);
-  const cta = sanitizeNoEmDash(ctaProp);
+  const cta = formatAdCardDisplayCopy(ctaProp);
   const variant = (layoutVariant as LayoutVariant) ?? "split-office";
   const templateId = propTemplateId ?? getTemplateIdForPillar(contentPillarId);
   const templateDef = AD_TEMPLATE_REGISTRY[templateId];
-  const proofType = templateDef.copySchema.proofType;
+  const proofType = getEffectiveProofType(templateDef.copySchema.proofType, contentPillarId);
   const resolvedCanvasStyle = canvasStyle ?? templateDef.canvasStyle;
   const isTextOnly =
     layoutStyle === "text-only" || templateId === "text-focused";
@@ -1202,7 +1284,7 @@ function VerticalCard({
     headline,
     subhead,
     supporting,
-    hasValueProps: true,
+    hasValueProps: proofType === "none",
     hasFeatureIcons: proofType === "icons",
     hasStepList: proofType === "steps" && usesStepList(contentPillarId),
     qrDataUrl,

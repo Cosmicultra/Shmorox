@@ -15,9 +15,12 @@ import { useApp } from "@/context/AppContext";
 import {
   Button,
   Card,
+  Dialog,
+  Field,
   StepIndicator,
   HelpTip,
   SelectionTile,
+  Textarea,
 } from "@/components/ui";
 import { SlidePanel } from "@/components/motion";
 import { generateId } from "@/lib/utils";
@@ -27,6 +30,7 @@ import type { AdLayoutStyle, CanvasStyle } from "@/lib/ad/ad-template-registry";
 import { buildDemoUrl } from "@/lib/knowledge/advisorpilot";
 
 const STEPS = ["Content Pillar", "Platforms", "Confirm", "Launch"];
+const CUSTOM_REQUEST_PILLAR_ID = "custom-request";
 
 const PLATFORM_ICONS: Record<SocialPlatform, React.ElementType> = {
   linkedin: Linkedin,
@@ -37,10 +41,13 @@ const PLATFORM_ICONS: Record<SocialPlatform, React.ElementType> = {
 
 export default function NewCampaignPage() {
   const router = useRouter();
-  const { addCampaign } = useApp();
+  const { addCampaign, launchCampaignPipeline } = useApp();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [contentPillar, setContentPillar] = useState<string | null>(null);
+  const [customRequest, setCustomRequest] = useState("");
+  const [customRequestDraft, setCustomRequestDraft] = useState("");
+  const [customRequestOpen, setCustomRequestOpen] = useState(false);
   const [platforms, setPlatforms] = useState<SocialPlatform[]>([
     "linkedin",
     "instagram",
@@ -57,14 +64,38 @@ export default function NewCampaignPage() {
     );
   };
 
+  const selectPillar = (pillarId: string) => {
+    if (pillarId === CUSTOM_REQUEST_PILLAR_ID) {
+      setCustomRequestDraft(customRequest);
+      setCustomRequestOpen(true);
+      return;
+    }
+    setContentPillar(pillarId);
+    setCustomRequest("");
+  };
+
+  const confirmCustomRequest = () => {
+    const trimmed = customRequestDraft.trim();
+    if (!trimmed) return;
+    setCustomRequest(trimmed);
+    setContentPillar(CUSTOM_REQUEST_PILLAR_ID);
+    setCustomRequestOpen(false);
+  };
+
   const canNext = () => {
-    if (step === 0) return contentPillar !== null;
+    if (step === 0) {
+      if (contentPillar === CUSTOM_REQUEST_PILLAR_ID) {
+        return customRequest.trim().length > 0;
+      }
+      return contentPillar !== null;
+    }
     if (step === 1) return platforms.length > 0;
     return true;
   };
 
   const handleLaunch = () => {
     if (!contentPillar) return;
+    if (contentPillar === CUSTOM_REQUEST_PILLAR_ID && !customRequest.trim()) return;
     setSubmitting(true);
 
     const campaign: CampaignRun = {
@@ -75,6 +106,8 @@ export default function NewCampaignPage() {
       generateConceptImages,
       layoutStyle,
       canvasStyle,
+      customRequest:
+        contentPillar === CUSTOM_REQUEST_PILLAR_ID ? customRequest.trim() : undefined,
       phase: "generating",
       status: "running",
       ads: [],
@@ -86,7 +119,9 @@ export default function NewCampaignPage() {
     };
 
     addCampaign(campaign);
-    router.push(`/campaign/${campaign.id}`);
+    launchCampaignPipeline(campaign.id);
+    // Generation runs in the app shell — leave the detail page anytime.
+    router.push("/");
   };
 
   const selectedPillar = ADVISORPILOT_KNOWLEDGE.contentPillars.find(
@@ -126,19 +161,27 @@ export default function NewCampaignPage() {
               <div className="grid gap-3">
                 {ADVISORPILOT_KNOWLEDGE.contentPillars.map((pillar) => {
                   const selected = contentPillar === pillar.id;
+                  const isCustom = pillar.id === CUSTOM_REQUEST_PILLAR_ID;
                   return (
                     <SelectionTile
                       key={pillar.id}
                       selected={selected}
-                      onClick={() => setContentPillar(pillar.id)}
+                      onClick={() => selectPillar(pillar.id)}
                     >
                       <p className="font-medium">{pillar.title}</p>
                       <p className={`mt-1 text-sm ${selected ? "text-inverse/70" : "text-secondary"}`}>
-                        {pillar.headline}
+                        {isCustom && selected && customRequest
+                          ? customRequest
+                          : pillar.headline}
                       </p>
                       <p className={`mt-2 text-xs ${selected ? "text-inverse/50" : "text-secondary/70"}`}>
                         {pillar.description}
                       </p>
+                      {isCustom && selected && customRequest ? (
+                        <p className={`mt-2 text-xs font-medium ${selected ? "text-gold" : "text-accent"}`}>
+                          Edit topic
+                        </p>
+                      ) : null}
                     </SelectionTile>
                   );
                 })}
@@ -261,7 +304,9 @@ export default function NewCampaignPage() {
                 {[
                   ["Brand", ADVISORPILOT_KNOWLEDGE.brandMark],
                   ["Content Pillar", selectedPillar?.title],
-                  ["Headline Preview", selectedPillar?.headline],
+                  ...(contentPillar === CUSTOM_REQUEST_PILLAR_ID && customRequest
+                    ? [["Custom Topic", customRequest] as const]
+                    : [["Headline Preview", selectedPillar?.headline] as const]),
                   [
                     "Platforms",
                     platforms
@@ -286,7 +331,7 @@ export default function NewCampaignPage() {
                 ].map(([label, value]) => (
                   <div key={label} className="flex gap-4 px-4 py-3 sm:px-5">
                     <dt className="w-36 shrink-0 text-sm font-medium text-secondary">{label}</dt>
-                    <dd className="text-sm text-primary">{value}</dd>
+                    <dd className="text-sm text-primary whitespace-pre-wrap">{value}</dd>
                   </div>
                 ))}
               </dl>
@@ -322,9 +367,9 @@ export default function NewCampaignPage() {
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10 ring-1 ring-accent/20">
                 <Loader2 className="h-8 w-8 animate-spin text-accent" />
               </div>
-              <h2 className="text-xl font-semibold text-primary">Ready to launch pipeline</h2>
+              <h2 className="text-xl font-semibold text-primary">Ready to launch</h2>
               <p className="text-sm text-secondary">
-                Click Launch to start the 3-phase campaign pipeline for AdvisorPilot.
+                Generation runs in the background — you can keep working while it finishes.
               </p>
             </div>
           )}
@@ -356,6 +401,45 @@ export default function NewCampaignPage() {
           </Button>
         )}
       </div>
+
+      <Dialog open={customRequestOpen} onClose={() => setCustomRequestOpen(false)}>
+        <Card className="p-6 sm:p-8">
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-xl font-semibold text-primary">Custom request</h2>
+              <p className="mt-1 text-sm text-secondary">
+                Tell us what to talk about. We will research AdvisorPilot capabilities and write a
+                grounded post around your topic.
+              </p>
+            </div>
+            <Field
+              label="What should this post cover?"
+              hint="Example: How AdvisorPilot helps RIAs prep for prospect meetings without adding headcount."
+              required
+            >
+              <Textarea
+                value={customRequestDraft}
+                onChange={(event) => setCustomRequestDraft(event.target.value)}
+                placeholder="Describe the angle, audience pain, or announcement you want to post about…"
+                rows={5}
+                autoFocus
+              />
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setCustomRequestOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="gold"
+                onClick={confirmCustomRequest}
+                disabled={!customRequestDraft.trim()}
+              >
+                Use this topic
+              </Button>
+            </div>
+          </div>
+        </Card>
+      </Dialog>
     </div>
   );
 }

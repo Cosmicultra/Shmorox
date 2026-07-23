@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "@/components/motion";
 import { Upload, File, X, Image as ImageIcon, Film } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -120,7 +121,14 @@ export function FileUploader({
                   <p className="font-mono text-xs text-secondary">{formatFileSize(file.size)}</p>
                 </div>
                 {file.previewUrl && (
-                  <img src={file.previewUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                  <Image
+                    src={file.previewUrl}
+                    alt=""
+                    width={40}
+                    height={40}
+                    unoptimized
+                    className="h-10 w-10 rounded-lg object-cover"
+                  />
                 )}
                 <button
                   onClick={() => removeFile(file.id)}

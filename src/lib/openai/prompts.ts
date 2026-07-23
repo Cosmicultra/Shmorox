@@ -98,7 +98,8 @@ Return JSON in this shape:
 
 export function buildCaptionGenerationPrompt(
   contentPillarId: string,
-  platforms: SocialPlatform[]
+  platforms: SocialPlatform[],
+  customRequest?: string
 ): { system: string; user: string } {
   const pillar = getPillarById(contentPillarId);
   if (!pillar) {
@@ -114,7 +115,9 @@ Rules:
 - Professional, fiduciary-aware tone for RIAs.
 - No guaranteed returns, outperformance, or regulatory approval claims.
 - AI assists workflow preparation, not investment advice.
-- Match each platform's typical style and length.`;
+- Match each platform's typical style and length.
+- Ground captions in real AdvisorPilot capabilities (statement intake, analysis, client-ready materials).
+- If a custom request topic is provided, address that angle while staying product-accurate.`;
 
   const platformSpecs = platforms
     .map((platform) => {
@@ -123,11 +126,15 @@ Rules:
     })
     .join("\n");
 
+  const customBlock = customRequest?.trim()
+    ? `\nCustom request topic (address this angle):\n"""${customRequest.trim()}"""\n`
+    : "";
+
   const user = `Content pillar: ${pillar.title}
 Description: ${pillar.description}
 Headline seed: ${pillar.headline}
 Subhead seed: ${pillar.subhead}
-
+${customBlock}
 Write one caption per platform:
 ${platformSpecs}
 

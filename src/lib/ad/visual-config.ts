@@ -49,17 +49,17 @@ export interface PillarStep {
 export const PILLAR_SHARED_PROOF_STEPS: PillarStep[] = [
   {
     icon: "users",
-    title: "Built by advisors, for advisors",
-    description: "Made by advisors who know the review grind.",
+    title: "Built by financial advisors, for financial advisors",
+    description: "Made by financial advisors who know the review grind.",
   },
   {
     icon: "clock",
-    title: "Statement to PDF leave-behinds",
-    description: "Less time on analysis and prep. More time with clients.",
+    title: "Time-saving workflow from statement, analysis, to PDF leave-behinds",
+    description: "Less time on prep. More time with clients.",
   },
   {
     icon: "trend",
-    title: "Enterprise power for every advisor",
+    title: "Enterprise power for every financial advisor",
     description: "Big-firm capability without big-firm overhead.",
   },
 ];
@@ -67,11 +67,17 @@ export const PILLAR_SHARED_PROOF_STEPS: PillarStep[] = [
 export const PILLAR_STEPS: Record<string, PillarStep[]> = {
   "prospect-workflow": PILLAR_SHARED_PROOF_STEPS,
   "statement-intelligence": PILLAR_SHARED_PROOF_STEPS,
+  "portfolio-narrative": PILLAR_SHARED_PROOF_STEPS,
+  "operational-scale": PILLAR_SHARED_PROOF_STEPS,
+  "compliance-posture": PILLAR_SHARED_PROOF_STEPS,
+  "company-launch": PILLAR_SHARED_PROOF_STEPS,
+  "custom-request": PILLAR_SHARED_PROOF_STEPS,
 };
 
 /** Pillar overrides — e.g. prospect-workflow uses dashboard style on split-office layout. */
 export const PILLAR_VISUAL_STYLE: Partial<Record<string, VisualStyle>> = {
   "prospect-workflow": "dashboard",
+  "company-launch": "dashboard",
 };
 
 export const VISUAL_PANEL_CONFIG: Record<
@@ -133,6 +139,15 @@ export function usesStepList(pillarId?: string): boolean {
   return Boolean(pillarId && PILLAR_STEPS[pillarId]?.length);
 }
 
+/** Pillar step lists override template proof type (e.g. text-only uses text-focused / proof none). */
+export function getEffectiveProofType(
+  templateProofType: "steps" | "icons" | "none",
+  pillarId?: string
+): "steps" | "icons" | "none" {
+  if (usesStepList(pillarId)) return "steps";
+  return templateProofType;
+}
+
 export type IconKey =
   | "clock"
   | "pie"
@@ -157,6 +172,8 @@ export const PILLAR_LAYOUTS: Record<string, LayoutVariant> = {
   "portfolio-narrative": "split-office",
   "operational-scale": "diagonal-growth",
   "compliance-posture": "split-clarity",
+  "company-launch": "split-office",
+  "custom-request": "split-office",
 };
 
 /** Canonical layout-example PNGs (preferred). */
@@ -202,18 +219,32 @@ export const PILLAR_FEATURES: Record<string, FeatureIcon[]> = {
   ],
   "compliance-posture": [
     { icon: "shield", label: "Workflow Traceability" },
-    { icon: "users", label: "Advisor Judgment" },
+    { icon: "users", label: "Your judgment" },
     { icon: "chart", label: "Operational Analysis" },
     { icon: "check", label: "Supervision Ready" },
+  ],
+  "company-launch": [
+    { icon: "file", label: "Statement Ingestion" },
+    { icon: "pie", label: "Portfolio Holdings" },
+    { icon: "chart", label: "Insight Generation" },
+    { icon: "clipboard", label: "Review Preparation" },
+  ],
+  "custom-request": [
+    { icon: "file", label: "Statement Ingestion" },
+    { icon: "pie", label: "Portfolio Holdings" },
+    { icon: "chart", label: "Insight Generation" },
+    { icon: "clipboard", label: "Review Preparation" },
   ],
 };
 
 export const PILLAR_HIGHLIGHTS: Record<string, string> = {
   "prospect-workflow": "accelerated",
   "statement-intelligence": "actionable",
-  "portfolio-narrative": "Understand",
-  "operational-scale": "Not",
-  "compliance-posture": "Judgment",
+  "portfolio-narrative": "want",
+  "operational-scale": "headcount",
+  "compliance-posture": "compliant",
+  "company-launch": "live",
+  "custom-request": "angle",
 };
 
 export const PILLAR_SUPPORTING: Record<string, string> = {
@@ -222,6 +253,8 @@ export const PILLAR_SUPPORTING: Record<string, string> = {
   "portfolio-narrative": "Your judgment. AdvisorPilot drafts the story.",
   "operational-scale": "More reviews. Same team. Stronger advice.",
   "compliance-posture": "Every step logged. Every output traceable.",
+  "company-launch": "Statement in. Materials out. AdvisorPilot is live.",
+  "custom-request": "Statement in. Materials out. You stay in the room.",
 };
 
 export const PILLAR_OUTCOME: Record<string, string> = {
@@ -231,7 +264,7 @@ export const PILLAR_OUTCOME: Record<string, string> = {
 export const FOOTER_TRUST: { icon: IconKey; label: string }[] = [
   { icon: "shield", label: "Secure. Your Data." },
   { icon: "cloud", label: "Scalable. Your Growth." },
-  { icon: "users", label: "Built for Advisors." },
+  { icon: "users", label: "Built for Financial Advisors." },
 ];
 
 export function getLayoutForPillar(pillarId?: string): LayoutVariant {

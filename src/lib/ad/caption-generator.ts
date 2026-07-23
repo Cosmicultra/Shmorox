@@ -34,7 +34,8 @@ interface GenerateCaptionsResponse {
 export async function generateCaptionsForPlatforms(
   pillarId: string,
   platforms: SocialPlatform[],
-  demoUrl: string
+  demoUrl: string,
+  customRequest?: string
 ): Promise<{
   captions: Record<SocialPlatform, string>;
   costDelta?: import("../openai/cost-tracker").GenerationCostDelta;
@@ -46,6 +47,7 @@ export async function generateCaptionsForPlatforms(
       contentPillarId: pillarId,
       platforms,
       demoUrl,
+      customRequest,
     }),
   });
 

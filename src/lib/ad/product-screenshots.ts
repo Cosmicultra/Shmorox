@@ -31,7 +31,7 @@ export const PRODUCT_SCREENSHOTS: ProductScreenshot[] = [
     title: "Prospect review",
     description:
       "Prep sequence with statement ingested, holdings confirmed, talking points drafted; ready for meeting.",
-    pillars: ["prospect-workflow", "operational-scale"],
+    pillars: ["prospect-workflow", "operational-scale", "company-launch", "custom-request"],
   },
   {
     id: "statement-capture",
@@ -39,7 +39,7 @@ export const PRODUCT_SCREENSHOTS: ProductScreenshot[] = [
     title: "Statement capture",
     description:
       "Drop-zone upload for custodian statements with secure client link and completed file status.",
-    pillars: ["statement-intelligence", "prospect-workflow"],
+    pillars: ["statement-intelligence", "prospect-workflow", "company-launch", "custom-request"],
   },
   {
     id: "statement-intake",
@@ -87,7 +87,7 @@ export const PRODUCT_SCREENSHOTS: ProductScreenshot[] = [
     title: "Deliverables",
     description:
       "Client review document card with PDF, email draft, and archive export actions.",
-    pillars: ["portfolio-narrative", "prospect-workflow", "operational-scale"],
+    pillars: ["portfolio-narrative", "prospect-workflow", "operational-scale", "company-launch", "custom-request"],
   },
   {
     id: "meeting-deliverables",
@@ -95,7 +95,7 @@ export const PRODUCT_SCREENSHOTS: ProductScreenshot[] = [
     title: "Meeting & deliverables",
     description:
       "Meeting checklist (goals, concentration, follow-ups) with export PDF and draft email.",
-    pillars: ["prospect-workflow", "operational-scale"],
+    pillars: ["prospect-workflow", "operational-scale", "company-launch", "custom-request"],
   },
   {
     id: "review-handoffs",
@@ -114,6 +114,8 @@ export const PILLAR_PRIMARY_SCREENSHOT: Record<string, ProductScreenshotId> = {
   "portfolio-narrative": "portfolio-analysis",
   "operational-scale": "review-handoffs",
   "compliance-posture": "book-of-record",
+  "company-launch": "prospect-review",
+  "custom-request": "prospect-review",
 };
 
 /** Supporting screens to mention or pair with the primary. */
@@ -123,6 +125,8 @@ export const PILLAR_SUPPORTING_SCREENSHOTS: Record<string, ProductScreenshotId[]
   "portfolio-narrative": ["review-analysis", "deliverables"],
   "operational-scale": ["prospect-review", "deliverables", "meeting-deliverables"],
   "compliance-posture": ["review-analysis", "review-handoffs"],
+  "company-launch": ["statement-capture", "meeting-deliverables", "deliverables"],
+  "custom-request": ["statement-capture", "meeting-deliverables", "deliverables"],
 };
 
 export function getScreenshotById(id: ProductScreenshotId): ProductScreenshot | undefined {

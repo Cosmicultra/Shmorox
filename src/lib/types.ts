@@ -241,6 +241,8 @@ export interface CampaignRun {
   layoutStyle?: import("./ad/ad-template-registry").AdLayoutStyle;
   /** Canvas background: gradient or clean white */
   canvasStyle?: import("./ad/ad-template-registry").CanvasStyle;
+  /** Freeform topic/angle when contentPillar is custom-request */
+  customRequest?: string;
   generationCost?: import("./openai/cost-tracker").GenerationCostReport;
   /** Why the run used template seeds instead of the Creative Director pipeline. */
   pipelineFallbackReason?: string;

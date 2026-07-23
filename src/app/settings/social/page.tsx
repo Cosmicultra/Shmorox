@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { motion } from "@/components/motion";
 import {
   Linkedin,
@@ -16,7 +17,8 @@ import {
 import { useApp } from "@/context/AppContext";
 import { Button, Card, Badge } from "@/components/ui";
 import { FadeIn, StaggerChildren, StaggerItem } from "@/components/motion";
-import { checkConnection } from "@/lib/social/client";
+import { checkConnection, setLinkedInPostAs, type ConnectionStatus } from "@/lib/social/client";
+import { linkedInOAuthUrl } from "@/lib/social/types";
 import type { SocialPlatform } from "@/lib/types";
 
 const PLATFORMS: {
@@ -56,10 +58,16 @@ const PLATFORMS: {
   },
 ];
 
-export default function SocialSettingsPage() {
+function SocialSettingsPage() {
   const { setSocialConnection, getSocialConnection } = useApp();
+  const searchParams = useSearchParams();
   const [checking, setChecking] = useState<SocialPlatform | null>(null);
   const [demoBannerDismissed, setDemoBannerDismissed] = useState(false);
+  const [linkedinMessage, setLinkedinMessage] = useState<{ type: "success" | "error"; text: string } | null>(
+    null
+  );
+  const [linkedinDetails, setLinkedinDetails] = useState<ConnectionStatus | null>(null);
+  const [switchingPostAs, setSwitchingPostAs] = useState(false);
   const [demoMode, setDemoMode] = useState<Record<SocialPlatform, boolean>>({
     linkedin: true,
     instagram: true,
@@ -68,8 +76,45 @@ export default function SocialSettingsPage() {
   });
 
   useEffect(() => {
+    const linkedin = searchParams.get("linkedin");
+    const linkedinError = searchParams.get("linkedin_error");
+    const account = searchParams.get("account");
+
+    if (linkedin === "connected" && linkedinError) {
+      // Connected personally, but company page was not found
+      setLinkedinMessage({ type: "error", text: linkedinError });
+      setSocialConnection({
+        platform: "linkedin",
+        connected: true,
+        accountName: account ?? "LinkedIn Account",
+        connectedAt: new Date().toISOString(),
+      });
+      setDemoMode((prev) => ({ ...prev, linkedin: false }));
+    } else if (linkedin === "connected") {
+      setLinkedinMessage({
+        type: "success",
+        text: account
+          ? `LinkedIn connected as ${account}. Campaign posts will publish to that page.`
+          : "LinkedIn connected. You can post from campaigns now.",
+      });
+      setSocialConnection({
+        platform: "linkedin",
+        connected: true,
+        accountName: account ?? "LinkedIn Account",
+        connectedAt: new Date().toISOString(),
+      });
+      setDemoMode((prev) => ({ ...prev, linkedin: false }));
+    } else if (linkedinError) {
+      setLinkedinMessage({ type: "error", text: linkedinError });
+    }
+  }, [searchParams, setSocialConnection]);
+
+  useEffect(() => {
     for (const platform of PLATFORMS) {
       checkConnection(platform.id === "instagram" ? "meta" : platform.id).then((status) => {
+        if (platform.id === "linkedin") {
+          setLinkedinDetails(status);
+        }
         if (status.connected) {
           setSocialConnection({
             platform: platform.id,
@@ -77,15 +122,21 @@ export default function SocialSettingsPage() {
             accountName: status.accountName,
             connectedAt: new Date().toISOString(),
           });
+          setDemoMode((prev) => ({ ...prev, [platform.id]: false }));
         }
-        if ("demoMode" in status && status.demoMode) {
+        if (status.demoMode) {
           setDemoMode((prev) => ({ ...prev, [platform.id]: true }));
         }
       });
     }
   }, [setSocialConnection]);
 
-  const handleConnect = async (platform: SocialPlatform) => {
+  const handleConnect = async (platform: SocialPlatform, linkedInAs?: "person" | "organization") => {
+    if (platform === "linkedin") {
+      window.location.href = linkedInOAuthUrl(linkedInAs ?? "organization");
+      return;
+    }
+
     setChecking(platform);
     const route = platform === "instagram" ? "meta" : platform;
     const status = await checkConnection(route);
@@ -109,7 +160,40 @@ export default function SocialSettingsPage() {
     setChecking(null);
   };
 
-  const handleDisconnect = (platform: SocialPlatform) => {
+  const handleLinkedInPostAs = async (postAs: "person" | "organization") => {
+    if (linkedinDetails?.postAs === postAs) return;
+    setSwitchingPostAs(true);
+    const result = await setLinkedInPostAs(postAs);
+    setSwitchingPostAs(false);
+    if (!result.success) {
+      setLinkedinMessage({
+        type: "error",
+        text: result.message ?? "Could not switch LinkedIn posting target.",
+      });
+      return;
+    }
+    setLinkedinDetails(result);
+    setSocialConnection({
+      platform: "linkedin",
+      connected: true,
+      accountName: result.accountName,
+      connectedAt: new Date().toISOString(),
+    });
+    setLinkedinMessage({
+      type: "success",
+      text:
+        postAs === "organization"
+          ? `Posts will go to ${result.organizationName ?? "your company page"}.`
+          : `Posts will go to your personal profile (${result.personName ?? "you"}).`,
+    });
+  };
+
+  const handleDisconnect = async (platform: SocialPlatform) => {
+    if (platform === "linkedin") {
+      await fetch("/api/social/linkedin", { method: "DELETE" });
+      setLinkedinMessage(null);
+      setLinkedinDetails({ connected: false });
+    }
     setSocialConnection({ platform, connected: false });
   };
 
@@ -131,6 +215,30 @@ export default function SocialSettingsPage() {
         </div>
       </FadeIn>
 
+      {linkedinMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`relative rounded-xl border p-4 ${
+            linkedinMessage.type === "success"
+              ? "border-emerald-500/30 bg-emerald-500/5"
+              : "border-red-500/30 bg-red-500/5"
+          }`}
+        >
+          <button
+            onClick={() => setLinkedinMessage(null)}
+            className="absolute right-3 top-3 rounded-lg p-1 text-secondary hover:bg-muted"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <p className="pr-8 text-sm font-medium text-primary">
+            {linkedinMessage.type === "success" ? "LinkedIn connected" : "LinkedIn connection failed"}
+          </p>
+          <p className="mt-1 pr-8 text-sm text-secondary">{linkedinMessage.text}</p>
+        </motion.div>
+      )}
+
       {!demoBannerDismissed && (
         <motion.div
           initial={{ opacity: 0, y: -8 }}
@@ -147,7 +255,7 @@ export default function SocialSettingsPage() {
           <p className="pr-8 text-sm font-medium text-primary">Demo Mode</p>
           <p className="mt-1 pr-8 text-sm text-secondary">
             When API credentials are not configured, Approve & Post simulates successful posting.
-            Add environment variables for live posting.
+            For LinkedIn live posting: add Client ID + Secret in .env.local, then click Connect.
           </p>
         </motion.div>
       )}
@@ -179,7 +287,7 @@ export default function SocialSettingsPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     {isConnected ? (
                       <>
                         <Badge variant="clear">
@@ -188,6 +296,15 @@ export default function SocialSettingsPage() {
                         </Badge>
                         <Button size="sm" variant="ghost" onClick={() => handleDisconnect(platform.id)}>
                           Disconnect
+                        </Button>
+                      </>
+                    ) : platform.id === "linkedin" ? (
+                      <>
+                        <Button size="sm" variant="secondary" onClick={() => handleConnect("linkedin", "person")}>
+                          Connect Personal
+                        </Button>
+                        <Button size="sm" onClick={() => handleConnect("linkedin", "organization")}>
+                          Connect Company Page
                         </Button>
                       </>
                     ) : (
@@ -202,10 +319,49 @@ export default function SocialSettingsPage() {
                     )}
                   </div>
                 </div>
+                {platform.id === "linkedin" && isConnected && !isDemo && (
+                  <div className="mt-3 rounded-lg bg-muted px-3 py-3">
+                    <p className="text-xs font-medium text-primary">Post as</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant={linkedinDetails?.postAs === "organization" ? "primary" : "secondary"}
+                        disabled={switchingPostAs || !linkedinDetails?.organizationId}
+                        onClick={() => handleLinkedInPostAs("organization")}
+                      >
+                        {switchingPostAs && linkedinDetails?.postAs !== "organization" && (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        )}
+                        {linkedinDetails?.organizationName ?? "Company Page"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={linkedinDetails?.postAs === "person" ? "primary" : "secondary"}
+                        disabled={switchingPostAs}
+                        onClick={() => handleLinkedInPostAs("person")}
+                      >
+                        {switchingPostAs && linkedinDetails?.postAs !== "person" && (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        )}
+                        {linkedinDetails?.personName
+                          ? `${linkedinDetails.personName} (Personal)`
+                          : "Personal Profile"}
+                      </Button>
+                    </div>
+                    {!linkedinDetails?.organizationId && (
+                      <p className="mt-2 text-xs text-secondary">
+                        No company page on this connection. Use Connect Company Page after granting page admin
+                        access, or set LINKEDIN_ORGANIZATION_ID.
+                      </p>
+                    )}
+                  </div>
+                )}
                 {!isConnected && (
                   <div className="mt-3 rounded-lg bg-muted px-3 py-2">
                     <p className="font-mono text-xs text-secondary">
-                      Required env vars: {platform.envVars.join(", ")}
+                      {platform.id === "linkedin"
+                        ? "Connect Personal uses your profile (Share on LinkedIn). Connect Company Page needs Community Management API approved on the LinkedIn app."
+                        : `Required env vars: ${platform.envVars.join(", ")}`}
                     </p>
                   </div>
                 )}
@@ -226,5 +382,19 @@ export default function SocialSettingsPage() {
         </Link>
       </Card>
     </div>
+  );
+}
+
+export default function SocialSettingsPageWithSuspense() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-3xl p-8">
+          <p className="text-sm text-secondary">Loading social settings…</p>
+        </div>
+      }
+    >
+      <SocialSettingsPage />
+    </Suspense>
   );
 }

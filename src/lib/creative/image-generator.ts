@@ -1,4 +1,5 @@
 import { getOpenAIConfig } from "../openai/config";
+import { estimateOpenAIImageCostUsd } from "../openai/image-pricing";
 import { getActiveCostTracker } from "../openai/cost-tracker-server";
 import { isRetryableOpenAIError, parseResponseBody, sleep } from "../openai/http";
 import { buildMasterImagePrompt, buildNegativePrompt } from "./image-prompts";
@@ -31,12 +32,24 @@ async function callImagesAPI(prompt: string, size: string, negativePrompt?: stri
     throw new Error("OPENAI_API_KEY is not configured");
   }
 
+  const { imageModel, imageQuality, imageEstimateQuality, imageGenUsd } = getOpenAIConfig();
   const body: Record<string, unknown> = {
-    model: getImageModel(),
+    model: imageModel,
     prompt: promptWithNegatives(prompt, negativePrompt),
     size,
     n: 1,
   };
+  if (imageQuality) {
+    body.quality = imageQuality;
+  }
+
+  const billedQuality = imageQuality ?? imageEstimateQuality;
+  const imageCostUsd = estimateOpenAIImageCostUsd({
+    model: imageModel,
+    size,
+    quality: billedQuality,
+    fallbackUsd: imageGenUsd,
+  });
 
   let lastError: Error | undefined;
 
@@ -63,11 +76,11 @@ async function callImagesAPI(prompt: string, size: string, negativePrompt?: stri
 
       const item = data.data?.[0];
       if (item?.b64_json) {
-        getActiveCostTracker()?.recordImageGeneration();
+        getActiveCostTracker()?.recordImageGeneration(imageCostUsd);
         return `data:image/png;base64,${item.b64_json}`;
       }
       if (item?.url) {
-        getActiveCostTracker()?.recordImageGeneration();
+        getActiveCostTracker()?.recordImageGeneration(imageCostUsd);
         return item.url;
       }
 

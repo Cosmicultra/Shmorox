@@ -19,6 +19,8 @@ export interface ModelUsageDelta {
 export interface GenerationCostDelta extends TokenUsageDelta, ModelUsageDelta {
   textCalls: number;
   imageGenerations: number;
+  /** Sum of per-image estimates (preferred over flat rate × count). */
+  imageCostUsd?: number;
 }
 
 export interface GenerationCostReport extends GenerationCostDelta {
@@ -57,6 +59,7 @@ export function estimateTextCostUsd(delta: Pick<GenerationCostDelta, keyof Model
 export class CostTracker {
   textCalls = 0;
   imageGenerations = 0;
+  imageCostUsd = 0;
   inputTokens = 0;
   outputTokens = 0;
   totalTokens = 0;
@@ -91,13 +94,15 @@ export class CostTracker {
     }
   }
 
-  recordImageGeneration(): void {
+  recordImageGeneration(costUsd: number): void {
     this.imageGenerations += 1;
+    this.imageCostUsd += costUsd;
   }
 
   merge(delta: Partial<GenerationCostDelta>): void {
     this.textCalls += delta.textCalls ?? 0;
     this.imageGenerations += delta.imageGenerations ?? 0;
+    this.imageCostUsd += delta.imageCostUsd ?? 0;
     this.inputTokens += delta.inputTokens ?? 0;
     this.outputTokens += delta.outputTokens ?? 0;
     this.totalTokens += delta.totalTokens ?? 0;
@@ -113,6 +118,7 @@ export class CostTracker {
     return {
       textCalls: this.textCalls,
       imageGenerations: this.imageGenerations,
+      imageCostUsd: this.imageCostUsd,
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
       totalTokens: this.totalTokens,
@@ -128,7 +134,10 @@ export class CostTracker {
   toReport(approvedAssets = 1): GenerationCostReport {
     const delta = this.toDelta();
     const estimatedTextCostUsd = estimateTextCostUsd(delta);
-    const estimatedImageCostUsd = delta.imageGenerations * getOpenAIConfig().imageGenUsd;
+    const estimatedImageCostUsd =
+      (delta.imageCostUsd ?? 0) > 0
+        ? (delta.imageCostUsd ?? 0)
+        : delta.imageGenerations * getOpenAIConfig().imageGenUsd;
     const estimatedTotalCostUsd = estimatedTextCostUsd + estimatedImageCostUsd;
 
     return {

@@ -186,8 +186,10 @@ export function CreativeDirectorDashboard({ campaign }: CreativeDirectorDashboar
               </div>
             </dl>
             <p className="mt-3 text-xs text-secondary">
-              Phase 1 uses one batched exploration call on gpt-4o-mini. Image count should be 1
-              unless concept preview images are explicitly enabled.
+              Estimates use OpenAI list pricing for your image model, size, and quality tier
+              (gpt-image-1 high 1024×1024 ≈ $0.17/image). Set OPENAI_IMAGE_QUALITY=medium to
+              reduce image spend (~$0.04/image). Phase 1 is one exploration text call plus one
+              master image unless concept previews are enabled.
             </p>
           </Card>
         )}

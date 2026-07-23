@@ -12,35 +12,52 @@ export const TRUST_BADGE = "Secure. Your Data.";
 
 export const PILLAR_PRODUCT_CLARITY: Record<string, PillarProductClarity> = {
   "statement-intelligence": {
-    productCategory: "AI-powered innovation for every advisor",
+    productCategory: "AI-powered innovation for every financial advisor",
     whatWeDo:
       "Extracts custodian statements, confirms holdings, and powers detailed analysis.",
-    whoItsFor: "Built by advisors, for advisors.",
-    whyDifferent: "Enterprise power for every advisor.",
+    whoItsFor: "Built by financial advisors, for financial advisors.",
+    whyDifferent: "Enterprise power for every financial advisor.",
   },
   "prospect-workflow": {
-    productCategory: "AI-powered advisor workflow",
+    productCategory: "AI-powered financial advisor workflow",
     whatWeDo: "Automates client review prep from statement intake to meeting materials.",
-    whoItsFor: "Built by advisors, for advisors.",
-    whyDifferent: "Enterprise power for every advisor.",
+    whoItsFor: "Built by financial advisors, for financial advisors.",
+    whyDifferent: "Enterprise power for every financial advisor.",
   },
   "portfolio-narrative": {
-    productCategory: "Advisor workflow software",
-    whatWeDo: "Drafts client-ready portfolio narratives from your holdings data.",
-    whoItsFor: "Built for independent advisors.",
-    whyDifferent: "AI assists prep — you keep fiduciary judgment.",
+    productCategory: "AI-powered financial advisor workflow",
+    whatWeDo:
+      "Uses AI to show clients and prospects your value in the first meeting.",
+    whoItsFor: "Built by financial advisors, for financial advisors.",
+    whyDifferent: "Enterprise power for every financial advisor.",
   },
   "operational-scale": {
-    productCategory: "Advisor workflow software",
-    whatWeDo: "Scales review prep so your team handles more clients without hiring.",
-    whoItsFor: "Built for growing advisory firms.",
-    whyDifferent: "Operational workflow software — not headcount.",
+    productCategory: "AI-powered financial advisor workflow",
+    whatWeDo:
+      "Uses AI to reduce prospect prep time and grow without hiring more staff.",
+    whoItsFor: "Built by financial advisors, for financial advisors.",
+    whyDifferent: "Enterprise power for every financial advisor.",
   },
   "compliance-posture": {
-    productCategory: "Advisor workflow software",
-    whatWeDo: "Traces every step from statement intake to client deliverables.",
-    whoItsFor: "Built for supervised advisory teams.",
-    whyDifferent: "Workflow traceability advisors cannot get from spreadsheets.",
+    productCategory: "AI-powered financial advisor workflow",
+    whatWeDo:
+      "Compliant analysis, compliant deliverables, compliant automated CRM constant contact.",
+    whoItsFor: "Built by financial advisors, for financial advisors.",
+    whyDifferent: "Enterprise power for every financial advisor.",
+  },
+  "company-launch": {
+    productCategory: "AI-powered financial advisor workflow",
+    whatWeDo:
+      "Turns statements into analysis and client-ready materials for advisors.",
+    whoItsFor: "Built by financial advisors, for financial advisors.",
+    whyDifferent: "Enterprise power for every financial advisor.",
+  },
+  "custom-request": {
+    productCategory: "AI-powered financial advisor workflow",
+    whatWeDo:
+      "Turns statements into analysis and client-ready materials for advisors.",
+    whoItsFor: "Built by financial advisors, for financial advisors.",
+    whyDifferent: "Enterprise power for every financial advisor.",
   },
 };
 
@@ -57,6 +74,9 @@ export const CAPABILITY_VERBS = [
   "reconcile",
   "deliver",
   "turn",
+  "show",
+  "reduce",
+  "grow",
 ];
 
 const AUDIENCE_TERMS = [

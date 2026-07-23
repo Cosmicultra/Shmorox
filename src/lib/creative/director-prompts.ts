@@ -12,6 +12,7 @@ import { getPillarCopyGuardrailsPromptBlock } from "../ad/pillar-copy-guardrails
 import { PILLAR_LAYOUTS } from "../ad/visual-config";
 import { ADVISORPILOT_KNOWLEDGE, getPillarById } from "../knowledge/advisorpilot";
 import { getBrandDNA, getBrandDNAContextBlock } from "./brand-dna";
+import { buildCustomRequestContext } from "./custom-request-context";
 import {
   getBrandConstraintsBlock,
   getCompositionFreedomBlock,
@@ -221,7 +222,8 @@ FA COPY LADDER (mandatory — CMO stranger test):
 - supportingCopy (subhead / whatWeDo) MUST be a concrete capability with an action verb — seed: "${productClarity.whatWeDo}"
 - whoItsFor and whyDifferent render in the value band — do NOT repeat them verbatim in supportingCopy.
 - BANNED vague words in supportingCopy: transforming, leveraging, solution (without concrete action), platform, unlock, empower.
-- Subhead MUST include an action verb (extract, confirm, draft, automate, trace, scale, prep, etc.) and advisor/RIA audience context.
+- Subhead MUST include an action verb (extract, confirm, draft, automate, trace, scale, prep, etc.) and financial advisor/RIA audience context.
+- On ad cards, always say "financial advisor(s)" — not standalone "advisor(s)" (AdvisorPilot brand name excepted).
 - Do NOT repeat "Secure. Your Data.", "Built for Advisors.", or similar trust-footer copy in subhead.
 - If proof type is steps: supportingCopy IS the subhead only — no fourth body paragraph.
 - Headline test: would a busy FA stop scrolling on LinkedIn?
@@ -243,6 +245,7 @@ ${
   const customContext = input.customBrief
     ? `\nCustom brief overrides:\n${JSON.stringify(input.customBrief, null, 2)}`
     : "";
+  const customRequestContext = buildCustomRequestContext(input.customRequest);
 
   return `Create a complete enterprise marketing campaign brief.
 
@@ -269,6 +272,7 @@ Asset type: ${assetLabel}
 Campaign type: ${input.campaignType ?? (pillar ? pillar.title : "Enterprise Campaign")}
 Audience: ${input.audience ?? dna.audience.join(", ")}
 ${pillarContext}
+${customRequestContext}
 ${customContext}
 
 Return JSON in exactly this shape:

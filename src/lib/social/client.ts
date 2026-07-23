@@ -95,8 +95,29 @@ export async function postToPlatform(post: SocialPost): Promise<SocialPostResult
   }
 }
 
-export async function checkConnection(platform: string): Promise<{ connected: boolean; accountName?: string }> {
+export type ConnectionStatus = {
+  connected: boolean;
+  accountName?: string;
+  personName?: string;
+  postAs?: "person" | "organization";
+  organizationId?: string;
+  organizationName?: string;
+  demoMode?: boolean;
+};
+
+export async function checkConnection(platform: string): Promise<ConnectionStatus> {
   const res = await fetch(`/api/social/${platform === "instagram" ? "meta" : platform}`);
   if (!res.ok) return { connected: false };
+  return res.json();
+}
+
+export async function setLinkedInPostAs(
+  postAs: "person" | "organization"
+): Promise<ConnectionStatus & { success?: boolean; message?: string }> {
+  const res = await fetch("/api/social/linkedin", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ postAs }),
+  });
   return res.json();
 }

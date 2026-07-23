@@ -3,7 +3,16 @@ import { runAIReview } from "./review-engine";
 import { buildDemoUrl, ADVISORPILOT_KNOWLEDGE } from "./knowledge/advisorpilot";
 import { sanitizeNoEmDash } from "./ad/content-guardrails";
 import { generateAds } from "./ad/generator";
-import { campaignPatchFromCheckpoint, checkpointFromCampaign, needsCreativeResume } from "./creative/checkpoint";
+import { campaignPatchFromCheckpoint, checkpointFromCampaign, isCreativeStepDone, needsCreativeResume } from "./creative/checkpoint";
+import { hydrateCampaignAdImages } from "./ad/ad-image-cache";
+import {
+  adCardsAreGenerated,
+  getStoredLegalResult,
+  isLegalReviewPassed,
+  isPackagingComplete,
+  markCampaignPipelineSettled,
+  needsPackagingOnlyResume,
+} from "./pipeline-resume";
 import { fixAdCopy, buildClaimsText } from "./ad/creative-fixer";
 import { lintAdBatch } from "./ad/ad-layout-linter";
 import { renderAllAds, renderAdsForPipeline, invalidateAdRenderCache } from "./ad/image-renderer";
@@ -19,6 +28,7 @@ import type {
 } from "./types";
 import { beginPipeline, endPipeline, touchPipeline, forceEndPipeline } from "./pipeline-state";
 import { unlockPipelineInSession } from "./pipeline-lock";
+import { clearInitialPipelineRun } from "./pipeline-launch";
 import {
   applyApprovedAssetCost,
   mergeCostDeltas,
@@ -54,6 +64,8 @@ export interface PipelineInput {
   generateConceptImages?: boolean;
   layoutStyle?: import("./ad/ad-template-registry").AdLayoutStyle;
   canvasStyle?: import("./ad/ad-template-registry").CanvasStyle;
+  /** Freeform topic/angle for custom-request campaigns */
+  customRequest?: string;
 }
 
 async function runLegalReview(
@@ -209,18 +221,13 @@ async function runPackagingPhase(
   const captionResult = await generateCaptionsForPlatforms(
     input.contentPillarId,
     input.platforms,
-    qrUrl
+    qrUrl,
+    input.customRequest
   );
   const captionsByPlatform = captionResult.captions;
   const mergedCost = captionResult.costDelta
     ? applyApprovedAssetCost(
-        mergeCostDeltas(
-          {
-            textCalls: generationCost?.textCalls ?? 0,
-            imageGenerations: generationCost?.imageGenerations ?? 0,
-          },
-          captionResult.costDelta
-        ),
+        mergeCostDeltas(generationCost ?? {}, captionResult.costDelta),
         ads.length
       )
     : generationCost
@@ -246,6 +253,7 @@ async function runPackagingPhase(
       : await renderAdsForPipeline(ads, true, qrUrl, { campaignId });
 
   callbacks.onProgress("Campaign package ready for posting!", "ready_to_post");
+  markCampaignPipelineSettled(campaignId);
   callbacks.onCampaignUpdate({
     phase: "ready_to_post",
     status: "approved",
@@ -284,6 +292,8 @@ export async function runCampaignPipeline(
     };
   }
 
+  clearInitialPipelineRun(campaignId);
+
   try {
   const qrUrl = buildDemoUrl("social", campaignId);
   const fixHistory: FixIteration[] = [];
@@ -299,6 +309,7 @@ export async function runCampaignPipeline(
       generateConceptImages: input.generateConceptImages,
       layoutStyle: input.layoutStyle,
       canvasStyle: input.canvasStyle,
+      customRequest: input.customRequest,
     },
     onProgress: (step) => {
       touchPipeline(campaignId);
@@ -424,6 +435,7 @@ export async function resumeCampaignPipeline(
     generateConceptImages: campaign.generateConceptImages,
     layoutStyle: campaign.layoutStyle,
     canvasStyle: campaign.canvasStyle,
+    customRequest: campaign.customRequest,
   };
   const qrUrl = campaign.qrUrl || buildDemoUrl("social", campaign.id);
   let ads = campaign.ads;
@@ -431,6 +443,31 @@ export async function resumeCampaignPipeline(
   const fixHistory = campaign.fixHistory ?? [];
 
   callbacks.onCampaignUpdate({ status: "running", qrUrl });
+
+  if (isPackagingComplete(campaign) && isLegalReviewPassed(campaign, callbacks.getResult)) {
+    callbacks.onCampaignUpdate({
+      phase: "ready_to_post",
+      status: "approved",
+      progressMessage: "Campaign package ready for posting!",
+    });
+    return;
+  }
+
+  if (needsPackagingOnlyResume(campaign, callbacks.getResult)) {
+    ads = await hydrateCampaignAdImages(campaign.id, ads);
+    callbacks.onCampaignUpdate({ ads, phase: "approved" });
+    await runPackagingPhase(
+      campaign.id,
+      input,
+      ads,
+      iteration,
+      fixHistory,
+      qrUrl,
+      callbacks,
+      campaign.generationCost
+    );
+    return;
+  }
 
   if (campaign.phase === "packaging" || campaign.phase === "approved") {
     await runPackagingPhase(
@@ -454,7 +491,11 @@ export async function resumeCampaignPipeline(
     return;
   }
 
-  if (campaign.phase === "generating" && needsCreativeResume(campaign)) {
+  if (
+    campaign.phase === "generating" &&
+    needsCreativeResume(campaign) &&
+    !(adCardsAreGenerated(campaign) && isCreativeStepDone(campaign))
+  ) {
     const needsImageRetry =
       campaign.imagesBlocked &&
       Boolean(campaign.selectedConcept) &&
@@ -505,20 +546,49 @@ export async function resumeCampaignPipeline(
   }
 
   if (campaign.phase === "generating" && ads.length > 0) {
-    const needsRerender = ads.some((ad) => !ad.imageDataUrl);
+    ads = await hydrateCampaignAdImages(campaign.id, ads);
+    const cardsReady = adCardsAreGenerated({ ...campaign, ads });
+    const needsRerender = !cardsReady && ads.some((ad) => !ad.imageDataUrl);
     if (needsRerender) {
       callbacks.onProgress("Resuming ad rendering…", "generating");
       ads = await renderAllAds(ads, true, qrUrl, { campaignId: campaign.id });
+      callbacks.onCampaignUpdate({ ads });
+    } else if (cardsReady) {
       callbacks.onCampaignUpdate({ ads });
     }
   }
 
   if (["generating", "legal_review", "fixing"].includes(campaign.phase) && ads.length > 0) {
-    const resumeFromFixing = campaign.phase === "fixing" && Boolean(campaign.legalReviewId);
+    ads = await hydrateCampaignAdImages(campaign.id, ads);
+    if (adCardsAreGenerated({ ...campaign, ads })) {
+      callbacks.onCampaignUpdate({ ads });
+    }
+
+    if (isLegalReviewPassed(campaign, callbacks.getResult)) {
+      await runPackagingPhase(
+        campaign.id,
+        input,
+        ads,
+        iteration,
+        fixHistory,
+        qrUrl,
+        callbacks,
+        campaign.generationCost
+      );
+      return;
+    }
+
+    const storedLegal = getStoredLegalResult(campaign, callbacks.getResult);
+    const resumeFromFixing =
+      campaign.phase === "fixing" ||
+      (Boolean(storedLegal) &&
+        (campaign.phase === "legal_review" || campaign.phase === "generating"));
     const pendingFindings =
-      resumeFromFixing && campaign.legalReviewId
-        ? callbacks.getResult(campaign.legalReviewId)?.findings
-        : undefined;
+      resumeFromFixing && storedLegal?.findings?.length
+        ? storedLegal.findings
+        : resumeFromFixing && campaign.legalReviewId
+          ? callbacks.getResult(campaign.legalReviewId)?.findings
+          : undefined;
 
     const { ads: reviewedAds, legalPassed, iteration: finalIteration, fixHistory: history } =
       await runLegalFixLoop(

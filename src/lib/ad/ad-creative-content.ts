@@ -1,5 +1,5 @@
 import type { AspectRatio, GeneratedAd, SocialPlatform } from "@/lib/types";
-import { sanitizeNoEmDash } from "./content-guardrails";
+import { sanitizeNoEmDash, formatAdCardDisplayCopy } from "./content-guardrails";
 import {
   getTemplateForPillar,
   AD_TEMPLATE_REGISTRY,
@@ -12,6 +12,7 @@ import {
   getStepsForPillar,
   getSupportingLine,
   usesStepList,
+  getEffectiveProofType,
   type IconKey,
   type LayoutVariant,
 } from "./visual-config";
@@ -157,25 +158,30 @@ export function buildContentFromAd(ad: GeneratedAd): AdCreativeContent {
   const layout = buildLayoutSpecFromAd(ad);
   const template = AD_TEMPLATE_REGISTRY[layout.templateId];
   const steps = getStepsForPillar(pillarId);
+  const proofType = getEffectiveProofType(template.copySchema.proofType, pillarId);
   const proofPoints: AdProofPoint[] | undefined =
-    template.copySchema.proofType === "steps" && steps
+    proofType === "steps" && steps
       ? steps.map((s) => ({ title: s.title, description: s.description, icon: s.icon }))
-      : template.copySchema.proofType === "icons"
+      : proofType === "icons"
         ? getFeaturesForPillar(pillarId).map((f) => ({ title: f.label, icon: f.icon }))
         : undefined;
 
-  const headline = sanitizeNoEmDash(ad.headline);
-  const subhead = sanitizeNoEmDash(ad.subhead);
+  const headline = formatAdCardDisplayCopy(ad.headline);
+  const subhead = formatAdCardDisplayCopy(ad.subhead);
   const rawSupporting = getSupportingLine(pillarId);
   const modes = resolveAdLayoutModes(headline, subhead, layout, rawSupporting);
 
   return {
     headline,
     subhead,
-    supportingLine: modes.supportingLine,
-    proofPoints,
+    supportingLine: formatAdCardDisplayCopy(modes.supportingLine),
+    proofPoints: proofPoints?.map((p) => ({
+      ...p,
+      title: formatAdCardDisplayCopy(p.title),
+      description: p.description ? formatAdCardDisplayCopy(p.description) : undefined,
+    })),
     disclaimer: sanitizeNoEmDash(ad.disclaimer),
-    cta: sanitizeNoEmDash(ad.cta),
+    cta: formatAdCardDisplayCopy(ad.cta),
   };
 }
 

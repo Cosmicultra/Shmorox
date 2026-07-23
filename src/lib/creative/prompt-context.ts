@@ -5,6 +5,7 @@ import {
 import { getPillarCopyGuardrailsPromptBlock } from "../ad/pillar-copy-guardrails";
 import { getPillarById } from "../knowledge/advisorpilot";
 import { getBrandDNA } from "./brand-dna";
+import { buildCustomRequestContext } from "./custom-request-context";
 import type { CreativeBrief, CreativeDirectorInput } from "./types";
 
 /** Compact brand context for exploration calls (~30 lines vs full DNA blocks). */
@@ -37,11 +38,14 @@ Primary UI: ${primaryUi?.title ?? "AdvisorPilot product"} — ${primaryUi?.descr
 ${getPillarCopyGuardrailsPromptBlock(input.contentPillarId)}`
     : "";
 
+  const customRequestContext = buildCustomRequestContext(input.customRequest);
+
   return `${brandContext}
 
 Asset: ${input.assetType}
 Campaign: ${input.campaignType ?? pillar?.title ?? "Enterprise Campaign"}
 ${pillarContext}
+${customRequestContext}
 
 ${getProductScreenshotsPromptBlock(input.contentPillarId)}`;
 }

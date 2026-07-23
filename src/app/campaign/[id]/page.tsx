@@ -17,16 +17,13 @@ import { Button, Card, Badge, RiskBadge, PipelineTimeline, InlineNotice } from "
 import { AdCardThumbnail } from "@/components/AdPreviewModal";
 import { CreativeDirectorDashboard } from "@/components/CreativeDirectorDashboard";
 import { ExpandableContent, StaggerChildren, StaggerItem, motion } from "@/components/motion";
+import { isCampaignPipelineControllerActive } from "@/lib/campaign-pipeline-controller";
 import { isPipelineActive } from "@/lib/pipeline-state";
-import {
-  isPipelineLockedInSession,
-  lockPipelineInSession,
-  unlockPipelineInSession,
-} from "@/lib/pipeline-lock";
 import { PostTextPreview } from "@/components/PostTextPreview";
 import { formatPostTextForApi } from "@/lib/ad/caption-generator";
+import { shouldSkipAdCardRerender } from "@/lib/pipeline-resume";
 import { getFullPostForPlatform } from "@/lib/post-package";
-import { SOCIAL_PLATFORMS, type SocialPlatform, type Finding, type GeneratedAd, type CampaignRun } from "@/lib/types";
+import { SOCIAL_PLATFORMS, type SocialPlatform, type Finding, type GeneratedAd } from "@/lib/types";
 import {
   getPillarTitle,
   ADVISORPILOT_DEMO_URL,
@@ -58,9 +55,6 @@ export default function CampaignDetailPage() {
     getCampaign,
     updateCampaign,
     hydrateCampaign,
-    addReview,
-    setResult,
-    updateReview,
     getResult,
     campaignsLoaded,
   } = useApp();
@@ -71,7 +65,6 @@ export default function CampaignDetailPage() {
   const [previewAd, setPreviewAd] = useState<GeneratedAd | null>(null);
   const [renderingAds, setRenderingAds] = useState(false);
   const imagesRegenerating = useRef(false);
-  const pipelineInitiated = useRef(false);
 
   useEffect(() => {
     if (campaign?.progressMessage) setProgress(campaign.progressMessage);
@@ -79,6 +72,8 @@ export default function CampaignDetailPage() {
 
   useEffect(() => {
     if (!campaignsLoaded || !id) return;
+    // Avoid clobbering an active background pipeline with a stale hydrate.
+    if (isCampaignPipelineControllerActive(id)) return;
     void hydrateCampaign(id);
   }, [campaignsLoaded, id, hydrateCampaign]);
 
@@ -90,106 +85,23 @@ export default function CampaignDetailPage() {
     }
   }, [campaign, campaignsLoaded, router]);
 
-  useEffect(() => {
-    if (!campaign) return;
-
-    let cancelled = false;
-
-    const pipelineCallbacks = {
-      onProgress: (message: string, phase: CampaignRun["phase"]) => {
-        updateCampaign(campaign.id, { phase, progressMessage: message });
-        if (!cancelled) setProgress(message);
-      },
-      onCampaignUpdate: (patch: Partial<CampaignRun>) => {
-        updateCampaign(campaign.id, patch);
-      },
-      addReview,
-      setResult,
-      updateReview,
-      getResult,
-    };
-
-    const resumablePhases = ["generating", "legal_review", "fixing", "packaging", "approved"] as const;
-    const hasCreativeCheckpoint =
-      campaign.creativePipelineStep &&
-      campaign.creativePipelineStep !== "pending";
-    const shouldResume =
-      campaign.status === "running" &&
-      resumablePhases.includes(campaign.phase as (typeof resumablePhases)[number]) &&
-      (campaign.phase !== "generating" ||
-        (campaign.ads?.length ?? 0) > 0 ||
-        Boolean(hasCreativeCheckpoint));
-
-    void import("@/lib/pipeline").then(({ runCampaignPipeline, resumeCampaignPipeline }) => {
-      if (cancelled) return;
-
-      const startFresh =
-        campaign.status === "running" &&
-        campaign.phase === "generating" &&
-        (campaign.ads?.length ?? 0) === 0 &&
-        (!hasCreativeCheckpoint || campaign.creativePipelineStep === "pending");
-
-      if (startFresh) {
-        if (
-          isPipelineActive(campaign.id) ||
-          pipelineInitiated.current ||
-          isPipelineLockedInSession(campaign.id)
-        ) {
-          return;
-        }
-        pipelineInitiated.current = true;
-        lockPipelineInSession(campaign.id);
-        runCampaignPipeline(
-          campaign.id,
-          {
-            contentPillarId: campaign.contentPillar,
-            platforms: campaign.platforms,
-            generateConceptImages: campaign.generateConceptImages,
-            layoutStyle: campaign.layoutStyle,
-            canvasStyle: campaign.canvasStyle,
-          },
-          pipelineCallbacks
-        );
-        return;
-      }
-
-      if (shouldResume) {
-        if (
-          isPipelineActive(campaign.id) ||
-          pipelineInitiated.current ||
-          isPipelineLockedInSession(campaign.id)
-        ) {
-          return;
-        }
-        pipelineInitiated.current = true;
-        lockPipelineInSession(campaign.id);
-        resumeCampaignPipeline(campaign, pipelineCallbacks);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      if (campaign.status !== "running") {
-        unlockPipelineInSession(campaign.id);
-      }
-    };
-  }, [campaign, addReview, setResult, updateReview, updateCampaign, getResult]);
-
   // Restore cached PNGs first; only render ads that were never packaged (new pipeline ads).
   useEffect(() => {
     if (!campaign || imagesRegenerating.current) return;
     if (campaign.ads.length === 0) return;
     if (campaign.ads.every((ad) => ad.imageDataUrl)) return;
-    if (isPipelineActive(campaign.id)) return;
+    if (isPipelineActive(campaign.id) || isCampaignPipelineControllerActive(campaign.id)) return;
     if (
       campaign.status === "running" &&
-      PIPELINE_RENDER_PHASES.includes(campaign.phase as (typeof PIPELINE_RENDER_PHASES)[number])
+      PIPELINE_RENDER_PHASES.includes(campaign.phase as (typeof PIPELINE_RENDER_PHASES)[number]) &&
+      !shouldSkipAdCardRerender(campaign, getResult)
     ) {
       return;
     }
 
     imagesRegenerating.current = true;
     setRenderingAds(true);
+    const skipRerender = shouldSkipAdCardRerender(campaign, getResult);
     const includeQR =
       Boolean(campaign.qrUrl) &&
       QR_AD_PHASES.includes(campaign.phase as (typeof QR_AD_PHASES)[number]);
@@ -200,7 +112,7 @@ export default function CampaignDetailPage() {
       const { renderAllAds } = await import("@/lib/ad/image-renderer");
 
       let ads = await hydrateCampaignAdImages(campaign.id, campaign.ads);
-      if (ads.some((ad) => !ad.imageDataUrl)) {
+      if (!skipRerender && ads.some((ad) => !ad.imageDataUrl)) {
         ads = await renderAllAds(ads, includeQR, qrUrl, { campaignId: campaign.id });
       }
       updateCampaign(campaign.id, { ads });
@@ -208,7 +120,7 @@ export default function CampaignDetailPage() {
       imagesRegenerating.current = false;
       setRenderingAds(false);
     });
-  }, [campaign, updateCampaign]);
+  }, [campaign, getResult, updateCampaign]);
 
   if (!campaign) {
     return (

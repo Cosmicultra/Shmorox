@@ -235,8 +235,9 @@ export default function HomePage() {
                             {campaign.status === "posted" && <Badge variant="clear">Posted</Badge>}
                           </div>
                           <p className="mt-1 font-mono text-xs text-secondary">
-                            {campaign.platforms.length} platform{campaign.platforms.length === 1 ? "" : "s"} ·{" "}
-                            {new Date(campaign.createdAt).toLocaleDateString()}
+                            {campaign.status === "running" && campaign.progressMessage
+                              ? campaign.progressMessage
+                              : `${campaign.platforms.length} platform${campaign.platforms.length === 1 ? "" : "s"} · ${new Date(campaign.createdAt).toLocaleDateString()}`}
                           </p>
                         </div>
                       </Link>

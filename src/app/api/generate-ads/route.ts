@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
   try {
     const result = await runCreativeToAds({
       contentPillarId: input.contentPillarId,
+      customRequest: input.customRequest,
       platforms: input.platforms,
     });
 

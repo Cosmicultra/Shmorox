@@ -250,6 +250,8 @@ export interface CreativeDirectorInput {
   audience?: string;
   platforms?: import("../types").SocialPlatform[];
   customBrief?: Partial<CreativeBrief>;
+  /** Freeform topic/angle for custom-request campaigns */
+  customRequest?: string;
   /** Expensive: generate AI images for all concepts before selection. Default false. */
   generateConceptImages?: boolean;
 }

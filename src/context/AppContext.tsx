@@ -1,7 +1,16 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import {
+  ensureCampaignPipeline,
+  syncBackgroundPipelines,
+  type PipelineControllerDeps,
+} from "@/lib/campaign-pipeline-controller";
+import { mergeRemoteCampaign } from "@/lib/campaigns/merge-remote";
 import { normalizeCampaign } from "@/lib/campaigns/normalize";
+import { stripCampaignImages } from "@/lib/campaigns/strip-images";
+import { uploadCampaignImagesClient } from "@/lib/campaigns/upload-assets-client";
+import { markCampaignForInitialPipelineRun } from "@/lib/pipeline-launch";
 import type { CampaignRun, ReviewResult, ReviewSubmission, SocialPlatform } from "@/lib/types";
 
 const REVIEWS_STORAGE_KEY = "shmorox-reviews";
@@ -35,6 +44,8 @@ interface AppState {
   deleteCampaign: (id: string) => void;
   getCampaign: (id: string) => CampaignRun | undefined;
   hydrateCampaign: (id: string) => Promise<void>;
+  /** Start campaign generation in the background — safe to navigate away. */
+  launchCampaignPipeline: (campaignId: string) => void;
   setSocialConnection: (connection: SocialConnection) => void;
   getSocialConnection: (platform: SocialPlatform) => SocialConnection | undefined;
 }
@@ -50,10 +61,13 @@ function useDebouncedEffect(effect: () => void, deps: unknown[], delayMs: number
 }
 
 async function persistCampaign(campaign: CampaignRun, isNew: boolean) {
+  await uploadCampaignImagesClient(campaign);
+
+  const stripped = stripCampaignImages(campaign);
   const res = await fetch(isNew ? "/api/campaigns" : `/api/campaigns/${campaign.id}`, {
     method: isNew ? "POST" : "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(campaign),
+    body: JSON.stringify(stripped),
   });
 
   if (!res.ok) {
@@ -77,11 +91,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingSaveIdsRef = useRef<Set<string>>(new Set());
   const newCampaignIdsRef = useRef<Set<string>>(new Set());
   const hydratingIdsRef = useRef<Set<string>>(new Set());
+  /** Bumps on every local mutation — used to detect stale in-flight saves. */
+  const campaignRevisionRef = useRef<Map<string, number>>(new Map());
+  /** Per-campaign save chain so PATCHes never complete out of order. */
+  const saveChainRef = useRef<Map<string, Promise<void>>>(new Map());
+  const savingIdsRef = useRef<Set<string>>(new Set());
 
   reviewsRef.current = reviews;
   resultsRef.current = results;
   campaignsRef.current = campaigns;
   socialConnectionsRef.current = socialConnections;
+
+  const pipelineDepsRef = useRef<PipelineControllerDeps>({
+    getCampaign: (id) => campaignsRef.current.find((c) => c.id === id),
+    updateCampaign: () => {},
+    addReview: () => {},
+    setResult: () => {},
+    updateReview: () => {},
+    getResult: (id) => resultsRef.current[id],
+  });
+
+  const bumpCampaignRevision = useCallback((id: string) => {
+    const next = (campaignRevisionRef.current.get(id) ?? 0) + 1;
+    campaignRevisionRef.current.set(id, next);
+    return next;
+  }, []);
+
+  const flushCampaignSave = useCallback(async (id: string) => {
+    // Keep writing until no newer local revision appeared mid-upload.
+    for (;;) {
+      const campaign = campaignsRef.current.find((c) => c.id === id);
+      if (!campaign) return;
+
+      const revision = campaignRevisionRef.current.get(id) ?? 0;
+      const isNew = newCampaignIdsRef.current.has(id);
+
+      savingIdsRef.current.add(id);
+      try {
+        await persistCampaign(campaign, isNew);
+        if (isNew) newCampaignIdsRef.current.delete(id);
+      } finally {
+        savingIdsRef.current.delete(id);
+      }
+
+      if ((campaignRevisionRef.current.get(id) ?? 0) === revision) return;
+    }
+  }, []);
+
+  const enqueueCampaignSave = useCallback(
+    (id: string) => {
+      const prev = saveChainRef.current.get(id) ?? Promise.resolve();
+      const next = prev
+        .catch(() => {
+          /* prior failure must not break the chain */
+        })
+        .then(() => flushCampaignSave(id))
+        .catch((err) => {
+          console.error("Campaign save failed:", err);
+        });
+      saveChainRef.current.set(id, next);
+    },
+    [flushCampaignSave]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -132,11 +203,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         if (!cancelled) {
-          setCampaigns(
-            loaded.sort(
+          setCampaigns((prev) => {
+            const byId = new Map<string, CampaignRun>();
+            for (const remote of loaded) byId.set(remote.id, remote);
+            for (const local of prev) {
+              const remote = byId.get(local.id);
+              byId.set(local.id, remote ? mergeRemoteCampaign(local, remote) : local);
+            }
+            return Array.from(byId.values()).sort(
               (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            )
-          );
+            );
+          });
         }
       } catch {
         /* keep empty — user may be offline or migrations not run yet */
@@ -167,26 +244,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pendingSaveIdsRef.current.clear();
 
     for (const id of ids) {
-      const campaign = campaignsRef.current.find((c) => c.id === id);
-      if (!campaign) continue;
-
-      const isNew = newCampaignIdsRef.current.has(id);
-      if (isNew) newCampaignIdsRef.current.delete(id);
-
-      persistCampaign(campaign, isNew).catch((err) => {
-        console.error("Campaign save failed:", err);
-      });
+      if (!campaignsRef.current.some((c) => c.id === id)) continue;
+      enqueueCampaignSave(id);
     }
-  }, [campaigns, campaignsLoaded], PERSIST_DEBOUNCE_MS);
+  }, [campaigns, campaignsLoaded, enqueueCampaignSave], PERSIST_DEBOUNCE_MS);
 
   useDebouncedEffect(() => {
     if (!storageReady) return;
     localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(socialConnectionsRef.current));
   }, [socialConnections, storageReady], PERSIST_DEBOUNCE_MS);
 
-  const queueCampaignSave = useCallback((id: string) => {
-    pendingSaveIdsRef.current.add(id);
-  }, []);
+  const queueCampaignSave = useCallback(
+    (id: string) => {
+      bumpCampaignRevision(id);
+      pendingSaveIdsRef.current.add(id);
+    },
+    [bumpCampaignRevision]
+  );
 
   const addReview = useCallback((review: ReviewSubmission) => {
     setReviews((prev) => [review, ...prev]);
@@ -220,17 +294,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const setResult = useCallback((submissionId: string, result: ReviewResult) => {
-    setResults((prev) => ({ ...prev, [submissionId]: result }));
+    setResults((prev) => {
+      const next = { ...prev, [submissionId]: result };
+      resultsRef.current = next;
+      return next;
+    });
   }, []);
 
   const getReview = useCallback((id: string) => reviews.find((r) => r.id === id), [reviews]);
-  const getResult = useCallback((id: string) => results[id], [results]);
+  const getResult = useCallback((id: string) => resultsRef.current[id], []);
 
   const addCampaign = useCallback(
     (campaign: CampaignRun) => {
       newCampaignIdsRef.current.add(campaign.id);
       queueCampaignSave(campaign.id);
-      setCampaigns((prev) => [campaign, ...prev]);
+      setCampaigns((prev) => {
+        const next = [campaign, ...prev];
+        campaignsRef.current = next;
+        return next;
+      });
     },
     [queueCampaignSave]
   );
@@ -238,10 +320,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateCampaign = useCallback(
     (id: string, patch: Partial<CampaignRun>) => {
       queueCampaignSave(id);
-      setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+      setCampaigns((prev) => {
+        const next = prev.map((c) => (c.id === id ? { ...c, ...patch } : c));
+        campaignsRef.current = next;
+        return next;
+      });
     },
     [queueCampaignSave]
   );
+
+  // Keep pipeline callbacks on refs so background runs always see latest state.
+  pipelineDepsRef.current = {
+    getCampaign: (id) => campaignsRef.current.find((c) => c.id === id),
+    updateCampaign,
+    addReview,
+    setResult,
+    updateReview,
+    getResult: (id) => resultsRef.current[id],
+  };
+
+  const launchCampaignPipeline = useCallback((campaignId: string) => {
+    markCampaignForInitialPipelineRun(campaignId);
+    void ensureCampaignPipeline(campaignId, pipelineDepsRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!campaignsLoaded) return;
+    syncBackgroundPipelines(campaignsRef.current, pipelineDepsRef.current);
+  }, [campaignsLoaded, campaigns]);
 
   const deleteCampaign = useCallback(async (id: string) => {
     let linkedReviewId: string | undefined;
@@ -253,6 +359,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     pendingSaveIdsRef.current.delete(id);
     newCampaignIdsRef.current.delete(id);
+    campaignRevisionRef.current.delete(id);
+    savingIdsRef.current.delete(id);
+    saveChainRef.current.delete(id);
 
     if (linkedReviewId) {
       setReviews((reviews) => reviews.filter((r) => r.id !== linkedReviewId));
@@ -278,17 +387,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       hydratingIdsRef.current.add(id);
 
       try {
+        // Don't clobber an in-flight local pipeline write with a possibly stale GET.
+        if (
+          pendingSaveIdsRef.current.has(id) ||
+          savingIdsRef.current.has(id) ||
+          newCampaignIdsRef.current.has(id)
+        ) {
+          return;
+        }
+
         const res = await fetch(`/api/campaigns/${id}`);
         if (!res.ok) return;
 
         const { campaign } = await res.json();
         if (!campaign) return;
 
+        // Re-check after the network round-trip — a save may have started.
+        if (pendingSaveIdsRef.current.has(id) || savingIdsRef.current.has(id)) {
+          return;
+        }
+
         setCampaigns((prev) => {
           const normalized = normalizeCampaign(campaign);
-          const exists = prev.some((c) => c.id === id);
-          if (!exists) return [normalized, ...prev];
-          return prev.map((c) => (c.id === id ? { ...c, ...normalized } : c));
+          const existing = prev.find((c) => c.id === id);
+          if (!existing) return [normalized, ...prev];
+          return prev.map((c) => (c.id === id ? mergeRemoteCampaign(c, normalized) : c));
         });
       } catch {
         /* ignore */
@@ -330,6 +453,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteCampaign,
       getCampaign,
       hydrateCampaign,
+      launchCampaignPipeline,
       setSocialConnection,
       getSocialConnection,
     }),
@@ -351,6 +475,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteCampaign,
       getCampaign,
       hydrateCampaign,
+      launchCampaignPipeline,
       setSocialConnection,
       getSocialConnection,
     ]

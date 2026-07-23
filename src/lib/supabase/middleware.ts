@@ -10,8 +10,12 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/auth");
 
+  // LinkedIn OAuth returns here; must not require a session or the auth code is lost.
+  const isLinkedInCallback = request.nextUrl.pathname.startsWith("/linkedin-callback");
+  const isPublicRoute = isAuthRoute || isLinkedInCallback;
+
   if (!supabaseUrl || !supabaseAnonKey) {
-    if (isAuthRoute) {
+    if (isPublicRoute) {
       return NextResponse.next({ request });
     }
 
@@ -43,7 +47,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user && getAllowedEmails().length === 0 && !isAuthRoute) {
+  if (user && getAllowedEmails().length === 0 && !isPublicRoute) {
     await supabase.auth.signOut();
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -51,7 +55,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && user.email && !isEmailAllowed(user.email) && !isAuthRoute) {
+  if (user && user.email && !isEmailAllowed(user.email) && !isPublicRoute) {
     await supabase.auth.signOut();
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -59,7 +63,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (!user && !isAuthRoute) {
+  if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

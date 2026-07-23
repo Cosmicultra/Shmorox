@@ -13,6 +13,8 @@ interface ChatCompletionResponse {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    input_tokens?: number;
+    output_tokens?: number;
   };
   error?: {
     message?: string;
@@ -26,6 +28,24 @@ export interface GenerateJSONOptions {
 }
 
 const MAX_ATTEMPTS = 2;
+
+function normalizeTokenUsage(
+  usage?: ChatCompletionResponse["usage"]
+): { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined {
+  if (!usage) return undefined;
+
+  const input = usage.prompt_tokens ?? usage.input_tokens;
+  const output = usage.completion_tokens ?? usage.output_tokens;
+  const total = usage.total_tokens ?? (input != null && output != null ? input + output : undefined);
+
+  if (input == null && output == null && total == null) return undefined;
+
+  return {
+    prompt_tokens: input,
+    completion_tokens: output,
+    total_tokens: total,
+  };
+}
 
 export async function generateJSON<T>(
   systemPrompt: string,
@@ -84,7 +104,7 @@ export async function generateJSON<T>(
         throw new Error("OpenAI returned an empty message");
       }
 
-      getActiveCostTracker()?.recordTextCall(tier, data.usage);
+      getActiveCostTracker()?.recordTextCall(tier, normalizeTokenUsage(data.usage));
 
       try {
         return JSON.parse(content) as T;

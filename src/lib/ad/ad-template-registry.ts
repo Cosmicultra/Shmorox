@@ -113,7 +113,7 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     copySchema: {
       maxHeadlineChars: 85,
       maxSubheadChars: 90,
-      proofType: "none",
+      proofType: "steps",
       accentBar: false,
       showSupportingLine: false,
       maxStepDescChars: 48,
@@ -138,7 +138,7 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     copySchema: {
       maxHeadlineChars: 80,
       maxSubheadChars: 90,
-      proofType: "none",
+      proofType: "steps",
       accentBar: true,
       showSupportingLine: false,
       maxStepDescChars: 48,
@@ -162,7 +162,7 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     copySchema: {
       maxHeadlineChars: 70,
       maxSubheadChars: 90,
-      proofType: "none",
+      proofType: "steps",
       accentBar: false,
       showSupportingLine: false,
       maxStepDescChars: 48,
@@ -212,6 +212,8 @@ export const PILLAR_TEMPLATE_MAP: Record<string, AdTemplateId> = {
   "portfolio-narrative": "split-office",
   "operational-scale": "diagonal-growth",
   "compliance-posture": "split-monitor",
+  "company-launch": "split-dashboard",
+  "custom-request": "split-office",
 };
 
 const ARCHETYPE_TEMPLATE_FALLBACK: Partial<Record<LayoutArchetypeId, AdTemplateId>> = {

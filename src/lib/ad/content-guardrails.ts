@@ -2,6 +2,8 @@
  * Marketing copy guardrails — no em-dashes or en-dashes in generated content.
  */
 
+const ADVISORPILOT_TOKEN = "\uE000ADVISORPILOT\uE001";
+
 /** Returns true if text contains an em-dash or en-dash */
 export function containsEmDash(text: string): boolean {
   return /[\u2013\u2014]/.test(text);
@@ -22,6 +24,32 @@ export function sanitizeNoEmDash(text: string): string {
     .replace(/\s{2,}/g, " ")
     .replace(/,\s*\./g, ".")
     .trim();
+}
+
+/** On ad cards, audience copy uses "financial advisor(s)" instead of "advisor(s)". */
+export function formatFinancialAdvisorCopy(text: string): string {
+  if (!text) return text;
+
+  let out = text.replace(/AdvisorPilot/g, ADVISORPILOT_TOKEN);
+
+  out = out.replace(/\b(?<!financial )advisors\b/gi, (match) => {
+    if (match === "Advisors") return "Financial Advisors";
+    if (match === "ADVISORS") return "FINANCIAL ADVISORS";
+    return "financial advisors";
+  });
+
+  out = out.replace(/\b(?<!financial )advisor\b/gi, (match) => {
+    if (match === "Advisor") return "Financial Advisor";
+    if (match === "ADVISOR") return "FINANCIAL ADVISOR";
+    return "financial advisor";
+  });
+
+  return out.split(ADVISORPILOT_TOKEN).join("AdvisorPilot");
+}
+
+/** Final string cleanup for rendered ad card copy. */
+export function formatAdCardDisplayCopy(text: string): string {
+  return formatFinancialAdvisorCopy(sanitizeNoEmDash(text));
 }
 
 /** Sanitize an array of strings (e.g. hashtags) */

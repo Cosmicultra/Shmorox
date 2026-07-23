@@ -38,7 +38,7 @@ import {
 } from "../openai/cost-tracker";
 import { generateId } from "../utils";
 import { ADVISORPILOT_KNOWLEDGE, getPillarById } from "../knowledge/advisorpilot";
-import { sanitizeNoEmDash } from "./content-guardrails";
+import { sanitizeNoEmDash, formatAdCardDisplayCopy } from "./content-guardrails";
 import { AD_DIMENSIONS, fitGeneratedCopyForLayout, getPlatformCopyAdjustments, validateCreative } from "./creative-rules";
 import { enrichGeneratedAd, tokenizeForOverlap } from "./ad-creative-content";
 import { resolveWhatWeDoCopy } from "./product-clarity";
@@ -190,13 +190,13 @@ function buildAdsFromBrief(
         subhead: sanitizeNoEmDash(normalizedBrief.supportingCopy),
         templateId: template.id,
       });
-      const headline = fittedCopy.headline;
-      const subhead = fittedCopy.subhead;
+      const headline = formatAdCardDisplayCopy(fittedCopy.headline);
+      const subhead = formatAdCardDisplayCopy(fittedCopy.subhead);
       const pillar = getPillarById(contentPillarId);
       const platformCta = pillar
         ? getPlatformCopyAdjustments(platform, pillar).cta
         : normalizedBrief.cta;
-      const cta = sanitizeNoEmDash(platformCta || normalizedBrief.cta);
+      const cta = formatAdCardDisplayCopy(platformCta || normalizedBrief.cta);
       validateCreative(headline, subhead, cta, aspectRatio);
       const dims = AD_DIMENSIONS[aspectRatio];
 
@@ -351,6 +351,7 @@ export async function generateAds(
           assetType: "social-ad",
           platforms: input.platforms,
           generateConceptImages: input.generateConceptImages,
+          customRequest: input.customRequest,
         },
       });
 

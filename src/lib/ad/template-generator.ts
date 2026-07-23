@@ -20,6 +20,8 @@ export interface AdGenerationInput {
   generateConceptImages?: boolean;
   layoutStyle?: import("./ad-template-registry").AdLayoutStyle;
   canvasStyle?: import("./ad-template-registry").CanvasStyle;
+  /** Freeform topic/angle for custom-request campaigns */
+  customRequest?: string;
 }
 
 const CAPTION_TEMPLATES: Record<string, string[]> = {
@@ -42,6 +44,14 @@ const CAPTION_TEMPLATES: Record<string, string[]> = {
   "compliance-posture": [
     `AI that assists workflow preparation, not investment advice. ${ADVISORPILOT_KNOWLEDGE.brandMark} is built by advisors who understand fiduciary discipline.`,
     `Wirehouse-grade operational discipline without wirehouse infrastructure. See how ${ADVISORPILOT_KNOWLEDGE.brandMark} fits your review stack.`,
+  ],
+  "company-launch": [
+    `${ADVISORPILOT_KNOWLEDGE.brandMark} is live today. Turns statements into analysis and client-ready materials for advisors.`,
+    `Built by advisors, for advisors. ${ADVISORPILOT_KNOWLEDGE.brandMark} is live: statement intake, analysis, and meeting materials in one workflow.`,
+  ],
+  "custom-request": [
+    `${ADVISORPILOT_KNOWLEDGE.brandMark} turns statements into analysis and client-ready materials for advisors. Built by advisors, for advisors.`,
+    `One workflow from statement intake to meeting materials. See how ${ADVISORPILOT_KNOWLEDGE.brandMark} helps advisors prep with confidence.`,
   ],
 };
 

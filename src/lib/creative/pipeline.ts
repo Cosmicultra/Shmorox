@@ -34,6 +34,8 @@ export interface CreativeToAdsInput {
   platforms: SocialPlatform[];
   skipImages?: boolean;
   generateConceptImages?: boolean;
+  /** Freeform topic/angle for custom-request campaigns */
+  customRequest?: string;
 }
 
 export interface CreativeToAdsResult {
@@ -256,6 +258,7 @@ export async function runCreativeToAds(
     assetType: "social-ad",
     platforms: input.platforms,
     generateConceptImages: input.generateConceptImages,
+    customRequest: input.customRequest,
   };
 
   try {

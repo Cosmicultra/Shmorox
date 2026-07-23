@@ -19,6 +19,7 @@
 .DS_Store
 *.pem
 .env*.local
+.data/
 
 # debug
 npm-debug.log*

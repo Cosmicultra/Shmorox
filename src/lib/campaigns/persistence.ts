@@ -1,11 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AspectRatio, CampaignRun, GeneratedAd } from "@/lib/types";
+import {
+  adCreativeImagePath,
+  adImagePath,
+  adaptedImagePath,
+  masterImagePath,
+} from "@/lib/campaigns/campaign-assets";
+import { isDataUrl, stripCampaignImages } from "@/lib/campaigns/strip-images";
 
+export { stripCampaignImages } from "@/lib/campaigns/strip-images";
 export const CAMPAIGN_ASSETS_BUCKET = "campaign-assets";
-
-function isDataUrl(value: string | undefined): value is string {
-  return typeof value === "string" && value.startsWith("data:");
-}
 
 function dataUrlToBuffer(dataUrl: string): Buffer {
   const base64 = dataUrl.split(",")[1] ?? "";
@@ -16,42 +20,8 @@ async function bufferToDataUrl(buffer: Buffer, mime = "image/png"): Promise<stri
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
-export function adImagePath(userId: string, campaignId: string, adId: string): string {
-  return `${userId}/${campaignId}/ads/${adId}.png`;
-}
-
-export function masterImagePath(userId: string, campaignId: string): string {
-  return `${userId}/${campaignId}/master.png`;
-}
-
-export function adaptedImagePath(userId: string, campaignId: string, aspect: AspectRatio): string {
-  const slug = aspect.replace(":", "-");
-  return `${userId}/${campaignId}/adapted/${slug}.png`;
-}
-
 export function campaignStoragePrefix(userId: string, campaignId: string): string {
   return `${userId}/${campaignId}`;
-}
-
-/** Remove inline image blobs before saving JSON to Postgres. */
-export function stripCampaignImages(campaign: CampaignRun): CampaignRun {
-  return {
-    ...campaign,
-    masterImageUrl: isDataUrl(campaign.masterImageUrl) ? undefined : campaign.masterImageUrl,
-    adaptedImages: campaign.adaptedImages
-      ? Object.fromEntries(
-          Object.entries(campaign.adaptedImages).map(([k, v]) => [
-            k,
-            isDataUrl(v) ? undefined : v,
-          ])
-        )
-      : campaign.adaptedImages,
-    ads: campaign.ads.map((ad) => ({
-      ...ad,
-      imageDataUrl: isDataUrl(ad.imageDataUrl) ? undefined : ad.imageDataUrl,
-      creativeAssetUrl: isDataUrl(ad.creativeAssetUrl) ? undefined : ad.creativeAssetUrl,
-    })),
-  };
 }
 
 async function uploadIfDataUrl(
@@ -106,7 +76,7 @@ export async function uploadCampaignImages(
       await uploadIfDataUrl(
         supabase,
         ad.creativeAssetUrl,
-        `${userId}/${campaign.id}/ads/${ad.id}-creative.png`
+        adCreativeImagePath(userId, campaign.id, ad.id)
       );
     }
   }
@@ -129,7 +99,7 @@ async function hydrateAdImages(
   if (!creativeAssetUrl || isDataUrl(creativeAssetUrl)) {
     const stored = await downloadAsDataUrl(
       supabase,
-      `${userId}/${campaignId}/ads/${ad.id}-creative.png`
+      adCreativeImagePath(userId, campaignId, ad.id)
     );
     if (stored) creativeAssetUrl = stored;
   }

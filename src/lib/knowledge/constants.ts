@@ -10,6 +10,8 @@ const PILLAR_TITLES: Record<string, string> = {
   "portfolio-narrative": "Portfolio Narrative",
   "operational-scale": "Operational Scale",
   "compliance-posture": "Compliance Posture",
+  "company-launch": "Company Launch",
+  "custom-request": "Custom Request",
 };
 
 export function getPillarTitle(pillarId: string): string {

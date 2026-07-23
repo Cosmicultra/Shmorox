@@ -65,6 +65,7 @@ export function normalizeCampaign(raw: Partial<CampaignRun> & { id: string }): C
     generateConceptImages: raw.generateConceptImages,
     layoutStyle,
     canvasStyle,
+    customRequest: raw.customRequest,
     generationCost: raw.generationCost,
     pipelineFallbackReason: raw.pipelineFallbackReason,
   };

@@ -26,3 +26,7 @@ export const OAUTH_URLS: Record<SocialPlatform, string> = {
   x: "/api/social/x/auth",
   tiktok: "/api/social/tiktok/auth",
 };
+
+export function linkedInOAuthUrl(postAs: "person" | "organization" = "organization"): string {
+  return `${OAUTH_URLS.linkedin}?as=${postAs}`;
+}

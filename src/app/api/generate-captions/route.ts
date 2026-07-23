@@ -12,6 +12,7 @@ interface CaptionGenerationRequest {
   contentPillarId: string;
   platforms: SocialPlatform[];
   demoUrl?: string;
+  customRequest?: string;
 }
 
 interface CaptionAIResponse {
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
     const { value: captions, cost } = await withCostTracking(async () => {
       const { system, user } = buildCaptionGenerationPrompt(
         input.contentPillarId,
-        input.platforms
+        input.platforms,
+        input.customRequest
       );
       const aiResult = await generateJSON<CaptionAIResponse>(system, user);
       const generated = {} as Record<SocialPlatform, string>;
