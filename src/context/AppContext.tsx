@@ -104,6 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const pipelineDepsRef = useRef<PipelineControllerDeps>({
     getCampaign: (id) => campaignsRef.current.find((c) => c.id === id),
+    getCampaigns: () => campaignsRef.current,
     updateCampaign: () => {},
     addReview: () => {},
     setResult: () => {},
@@ -332,6 +333,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Keep pipeline callbacks on refs so background runs always see latest state.
   pipelineDepsRef.current = {
     getCampaign: (id) => campaignsRef.current.find((c) => c.id === id),
+    getCampaigns: () => campaignsRef.current,
     updateCampaign,
     addReview,
     setResult,

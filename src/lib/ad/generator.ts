@@ -133,8 +133,13 @@ function normalizeBriefForTemplate(contentPillarId: string, brief: CreativeBrief
   const pillar = getPillarById(contentPillarId);
   const template = getTemplateForPillar(contentPillarId);
   const steps = getStepsForPillar(contentPillarId);
+  const isCustomRequest = contentPillarId === "custom-request";
 
-  const headline = brief.headline?.trim() || pillar?.headline || "";
+  // Custom-request pillar.headline is a UI placeholder — never fall back to it on ad cards.
+  const headline =
+    brief.headline?.trim() ||
+    (isCustomRequest ? "" : pillar?.headline) ||
+    "";
   let supportingCopy = brief.supportingCopy?.trim() || pillar?.subhead || "";
   supportingCopy = resolveWhatWeDoCopy(contentPillarId, supportingCopy);
 
@@ -352,6 +357,7 @@ export async function generateAds(
           platforms: input.platforms,
           generateConceptImages: input.generateConceptImages,
           customRequest: input.customRequest,
+          avoidedHeadlines: input.avoidedHeadlines,
         },
       });
 

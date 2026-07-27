@@ -193,11 +193,16 @@ export function buildDirectorUserPrompt(input: CreativeDirectorInput): string {
 
   const brandContext = getBrandDNAContextBlock(dna);
 
+  const isCustomRequest = input.contentPillarId === "custom-request";
   const pillarContext = pillar
     ? `
 Content pillar: ${pillar.title}
 Feature focus: ${pillar.description}
-Headline seed: ${pillar.headline}
+${
+  isCustomRequest
+    ? "Headline seed: (none — write a fresh headline from the custom request; never use UI placeholders)"
+    : `Headline seed: ${pillar.headline}`
+}
 Supporting copy seed: ${pillar.subhead}
 CTA seed: ${pillar.cta}
 Customer pain (before): ${pillar.transformationBefore}
@@ -245,7 +250,10 @@ ${
   const customContext = input.customBrief
     ? `\nCustom brief overrides:\n${JSON.stringify(input.customBrief, null, 2)}`
     : "";
-  const customRequestContext = buildCustomRequestContext(input.customRequest);
+  const customRequestContext = buildCustomRequestContext(
+    input.customRequest,
+    input.avoidedHeadlines
+  );
 
   return `Create a complete enterprise marketing campaign brief.
 

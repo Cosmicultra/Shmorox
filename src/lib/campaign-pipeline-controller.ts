@@ -1,3 +1,4 @@
+import { collectPriorCustomHeadlines } from "@/lib/creative/custom-headline-history";
 import { hasPendingInitialPipelineRun } from "@/lib/pipeline-launch";
 import { lockPipelineInSession } from "@/lib/pipeline-lock";
 import {
@@ -15,6 +16,7 @@ import type { CampaignRun, ReviewResult, ReviewSubmission } from "@/lib/types";
 
 export type PipelineControllerDeps = {
   getCampaign: (id: string) => CampaignRun | undefined;
+  getCampaigns: () => CampaignRun[];
   updateCampaign: (id: string, patch: Partial<CampaignRun>) => void;
   addReview: (review: ReviewSubmission) => void;
   setResult: (id: string, result: ReviewResult) => void;
@@ -36,6 +38,8 @@ function buildCallbacks(campaignId: string, deps: PipelineControllerDeps) {
     setResult: deps.setResult,
     updateReview: deps.updateReview,
     getResult: deps.getResult,
+    getAvoidedHeadlines: (excludeCampaignId: string) =>
+      collectPriorCustomHeadlines(deps.getCampaigns(), excludeCampaignId),
   };
 }
 
@@ -90,6 +94,10 @@ export async function ensureCampaignPipeline(
           layoutStyle: campaign.layoutStyle,
           canvasStyle: campaign.canvasStyle,
           customRequest: campaign.customRequest,
+          avoidedHeadlines:
+            campaign.contentPillar === "custom-request"
+              ? collectPriorCustomHeadlines(deps.getCampaigns(), campaignId)
+              : undefined,
         },
         callbacks
       );

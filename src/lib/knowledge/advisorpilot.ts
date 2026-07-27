@@ -228,6 +228,7 @@ export const ADVISORPILOT_KNOWLEDGE: AdvisorPilotKnowledge = {
     {
       id: "custom-request",
       title: "Custom Request",
+      // UI placeholder for the pillar picker only — never ship as ad-card copy.
       headline: "Your angle.\nOur product.",
       subhead:
         "Turns statements into analysis and client-ready materials for advisors.",

@@ -36,6 +36,8 @@ export interface CreativeToAdsInput {
   generateConceptImages?: boolean;
   /** Freeform topic/angle for custom-request campaigns */
   customRequest?: string;
+  /** Prior custom-request headlines to avoid reusing */
+  avoidedHeadlines?: string[];
 }
 
 export interface CreativeToAdsResult {
@@ -259,6 +261,7 @@ export async function runCreativeToAds(
     platforms: input.platforms,
     generateConceptImages: input.generateConceptImages,
     customRequest: input.customRequest,
+    avoidedHeadlines: input.avoidedHeadlines,
   };
 
   try {
@@ -297,6 +300,8 @@ export async function runCreativeToAds(
       ads: generateAdsFromTemplates({
         contentPillarId: input.contentPillarId,
         platforms: input.platforms,
+        customRequest: input.customRequest,
+        avoidedHeadlines: input.avoidedHeadlines,
       }),
       brief: fallbackBrief,
       originalBrief: fallbackBrief,

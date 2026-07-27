@@ -12,6 +12,7 @@ import {
   validateCreative,
 } from "./creative-rules";
 import { sanitizeNoEmDash } from "./content-guardrails";
+import { extractExplicitCustomHeadline } from "../creative/explicit-custom-headline";
 
 export interface AdGenerationInput {
   contentPillarId: string;
@@ -22,6 +23,8 @@ export interface AdGenerationInput {
   canvasStyle?: import("./ad-template-registry").CanvasStyle;
   /** Freeform topic/angle for custom-request campaigns */
   customRequest?: string;
+  /** Prior custom-request headlines to avoid reusing */
+  avoidedHeadlines?: string[];
 }
 
 const CAPTION_TEMPLATES: Record<string, string[]> = {
@@ -55,6 +58,16 @@ const CAPTION_TEMPLATES: Record<string, string[]> = {
   ],
 };
 
+function deriveCustomRequestFallbackHeadline(customRequest?: string): string {
+  const explicit = extractExplicitCustomHeadline(customRequest);
+  if (explicit) return explicit;
+
+  const topic = customRequest?.replace(/\s+/g, " ").trim();
+  if (!topic) return "Workflow built for financial advisors.";
+  if (topic.length <= 55) return topic;
+  return `${topic.slice(0, 52).trimEnd()}…`;
+}
+
 export function generateAdsFromTemplates(input: AdGenerationInput): GeneratedAd[] {
   const pillar = getPillarById(input.contentPillarId);
   if (!pillar) throw new Error(`Unknown content pillar: ${input.contentPillarId}`);
@@ -69,7 +82,11 @@ export function generateAdsFromTemplates(input: AdGenerationInput): GeneratedAd[
     if (!platformConfig) continue;
 
     const copy = getPlatformCopyAdjustments(platform, pillar);
-    const headline = sanitizeNoEmDash(copy.headline);
+    const headline = sanitizeNoEmDash(
+      input.contentPillarId === "custom-request"
+        ? deriveCustomRequestFallbackHeadline(input.customRequest)
+        : copy.headline
+    );
     const subhead = sanitizeNoEmDash(copy.subhead);
     const cta = sanitizeNoEmDash(copy.cta);
 

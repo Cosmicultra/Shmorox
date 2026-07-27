@@ -56,6 +56,8 @@ export interface PipelineCallbacks {
   setResult: (id: string, result: ReviewResult) => void;
   updateReview: (id: string, patch: Partial<ReviewSubmission>) => void;
   getResult: (id: string) => ReviewResult | undefined;
+  /** Prior custom-request headlines for the current user (exclude current campaign). */
+  getAvoidedHeadlines?: (excludeCampaignId: string) => string[];
 }
 
 export interface PipelineInput {
@@ -66,6 +68,8 @@ export interface PipelineInput {
   canvasStyle?: import("./ad/ad-template-registry").CanvasStyle;
   /** Freeform topic/angle for custom-request campaigns */
   customRequest?: string;
+  /** Prior custom-request headlines to avoid reusing */
+  avoidedHeadlines?: string[];
 }
 
 async function runLegalReview(
@@ -310,6 +314,7 @@ export async function runCampaignPipeline(
       layoutStyle: input.layoutStyle,
       canvasStyle: input.canvasStyle,
       customRequest: input.customRequest,
+      avoidedHeadlines: input.avoidedHeadlines,
     },
     onProgress: (step) => {
       touchPipeline(campaignId);
@@ -436,6 +441,9 @@ export async function resumeCampaignPipeline(
     layoutStyle: campaign.layoutStyle,
     canvasStyle: campaign.canvasStyle,
     customRequest: campaign.customRequest,
+    avoidedHeadlines: campaign.contentPillar === "custom-request"
+      ? callbacks.getAvoidedHeadlines?.(campaign.id)
+      : undefined,
   };
   const qrUrl = campaign.qrUrl || buildDemoUrl("social", campaign.id);
   let ads = campaign.ads;

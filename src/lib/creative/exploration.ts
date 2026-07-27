@@ -2,6 +2,14 @@ import { generateId } from "../utils";
 import { sanitizeNoEmDash } from "../ad/content-guardrails";
 import { generateJSON } from "../openai/server";
 import { getOpenAIConfig } from "../openai/config";
+import {
+  isBannedCustomHeadlineSeed,
+  normalizeHeadlineKey,
+} from "./custom-headline-history";
+import {
+  extractExplicitCustomHeadline,
+  isExplicitlyRequestedHeadline,
+} from "./explicit-custom-headline";
 import { normalizeBriefResponse, type RawCreativeBriefResponse } from "./director-prompts";
 import {
   EXPLORATION_SYSTEM,
@@ -304,16 +312,50 @@ function applyIndexScoreFallback(
   });
 }
 
+function isAvoidedOrBannedHeadline(
+  headline: string | undefined,
+  avoidedHeadlines?: string[],
+  explicitHeadline?: string
+): boolean {
+  if (!headline?.trim()) return true;
+  // User-stated titles may be reused, including the old placeholder if they asked for it.
+  if (isExplicitlyRequestedHeadline(headline, explicitHeadline)) return false;
+  if (isBannedCustomHeadlineSeed(headline)) return true;
+  const key = normalizeHeadlineKey(headline);
+  const avoided = new Set(
+    (avoidedHeadlines ?? []).map(normalizeHeadlineKey).filter(Boolean)
+  );
+  return avoided.has(key);
+}
+
 function selectWinner(
   variations: ConceptVariation[],
-  selectedStyle?: string
+  selectedStyle?: string,
+  options?: {
+    avoidedHeadlines?: string[];
+    preferFreshHeadline?: boolean;
+    explicitHeadline?: string;
+  }
 ): ConceptVariation {
-  const sorted = [...variations].sort((a, b) => b.score - a.score);
+  const candidates =
+    options?.preferFreshHeadline
+      ? variations.filter(
+          (v) =>
+            !isAvoidedOrBannedHeadline(
+              v.brief.headline,
+              options.avoidedHeadlines,
+              options.explicitHeadline
+            )
+        )
+      : variations;
+  const pool = candidates.length > 0 ? candidates : variations;
+
+  const sorted = [...pool].sort((a, b) => b.score - a.score);
   const top = sorted[0];
 
   const style = normalizeConceptStyle(selectedStyle);
   if (style) {
-    const preferred = variations.find((v) => v.style === style);
+    const preferred = pool.find((v) => v.style === style);
     if (preferred) {
       if (preferred.score >= top.score - 5) return preferred;
       if (preferred.score === 0 && top.score > 0) return top;
@@ -369,7 +411,27 @@ export async function runExplorationPhase(
     raw
   );
   const diversityReport = checkArchetypeDiversity(variations);
-  const selected = selectWinner(variations, raw.selectedStyle);
+  const preferFreshHeadline = input.contentPillarId === "custom-request";
+  const explicitHeadline = preferFreshHeadline
+    ? extractExplicitCustomHeadline(input.customRequest)
+    : undefined;
+  const selected = selectWinner(variations, raw.selectedStyle, {
+    preferFreshHeadline,
+    avoidedHeadlines: input.avoidedHeadlines,
+    explicitHeadline,
+  });
+  // Keep campaign brief aligned with the winning concept / explicit title.
+  if (preferFreshHeadline) {
+    if (explicitHeadline) {
+      baseBrief.headline = explicitHeadline;
+      selected.brief.headline = explicitHeadline;
+    } else if (selected.brief.headline?.trim()) {
+      baseBrief.headline = selected.brief.headline;
+    }
+    if (selected.brief.supportingCopy?.trim()) {
+      baseBrief.supportingCopy = selected.brief.supportingCopy;
+    }
+  }
   const selectionRationale = raw.selectionRationale ?? "";
 
   const {

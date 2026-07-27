@@ -25,11 +25,16 @@ export function buildExplorationInputContext(input: CreativeDirectorInput): stri
   const pillar = input.contentPillarId ? getPillarById(input.contentPillarId) : undefined;
   const brandContext = buildCompactBrandContext(input.brandId);
   const primaryUi = getPrimaryScreenshotForPillar(input.contentPillarId);
+  const isCustomRequest = input.contentPillarId === "custom-request";
 
   const pillarContext = pillar
     ? `Pillar: ${pillar.title}
 Feature: ${pillar.description}
-Headline seed: ${pillar.headline}
+${
+  isCustomRequest
+    ? "Headline seed: (none — write a fresh headline from the custom request; never use UI placeholders)"
+    : `Headline seed: ${pillar.headline}`
+}
 Subhead seed: ${pillar.subhead}
 CTA seed: ${pillar.cta}
 Pain: ${pillar.transformationBefore}
@@ -38,7 +43,10 @@ Primary UI: ${primaryUi?.title ?? "AdvisorPilot product"} — ${primaryUi?.descr
 ${getPillarCopyGuardrailsPromptBlock(input.contentPillarId)}`
     : "";
 
-  const customRequestContext = buildCustomRequestContext(input.customRequest);
+  const customRequestContext = buildCustomRequestContext(
+    input.customRequest,
+    input.avoidedHeadlines
+  );
 
   return `${brandContext}
 

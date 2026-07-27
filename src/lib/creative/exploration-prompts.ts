@@ -19,6 +19,7 @@ Rules:
 - CMO stranger test: supportingCopy must state a concrete product action (verb + object) and advisor/RIA audience in ≤90 chars.
 - Use pillar whatWeDo seeds — never vague AI filler ("transforming", "leveraging", "solution" without action).
 - When pillar copy guardrails are provided, stay on the same messaging; light rephrasing is OK if meaning and tone match (simple, catchy, advisor-facing).
+- Exception for custom-request: invent a fresh headline every time and do not reuse prior custom headlines, unless the custom request explicitly states the title/headline to use — then use that exact title.
 - Do not repeat value-prop footer phrases (Secure. Your Data., Built for Advisors.) in subhead.
 - Each concept MUST use its assigned layout archetype — composition must differ.
 - Concepts are TEXT ONLY — no image generation.

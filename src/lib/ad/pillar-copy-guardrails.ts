@@ -119,11 +119,12 @@ const PILLAR_MESSAGING: Record<string, PillarMessagingAnchors> = {
   },
   "custom-request": {
     productCategory: "AI-powered financial advisor workflow",
-    headlineAnchor: "Your angle. Our product.",
+    // Placeholder only — never treat as a canonical headline to reuse.
+    headlineAnchor: "",
     subheadAnchor:
       "Turns statements into analysis and client-ready materials for advisors.",
     headlineThemes: [
-      "Headline must match the custom request topic while staying AdvisorPilot-specific",
+      "Write a fresh headline from the custom request topic every campaign",
       "Keep it short and scroll-stopping for financial advisors",
     ],
     subheadThemes: [
@@ -147,6 +148,29 @@ export function getPillarMessagingAnchors(
 export function getPillarCopyGuardrailsPromptBlock(pillarId?: string): string {
   const anchors = getPillarMessagingAnchors(pillarId);
   if (!anchors) return "";
+
+  if (pillarId === "custom-request") {
+    return `
+PILLAR COPY GUARDRAILS (custom request — fresh headline unless user names one):
+- Product category (above headline): anchor "${anchors.productCategory}"
+  Variations OK if still simple, catchy, and clearly AI-powered workflow software for financial advisors.
+- Always say "financial advisor(s)" on ad cards — never standalone "advisor(s)" unless part of the AdvisorPilot brand name.
+- Headline: invent a NEW short headline for THIS custom request by default. Do not reuse pillar seeds or prior campaigns.
+  Exception: if the custom request explicitly states the headline/title to use, use that exact title (reuse allowed only then).
+  Unless the user explicitly requested it, NEVER use "Your angle. Our product." or close variants.
+  Ground the line in the user's topic + a concrete AdvisorPilot benefit. Scroll-stopping for financial advisors.
+  Keep it short. No jargon. No em-dashes.
+- Subhead / supportingCopy: anchor "${anchors.subheadAnchor}"
+  Same idea as: ${anchors.subheadThemes.map((t) => `"${t}"`).join("; ")}
+  Must stay concrete (what the product does). Plain English. Not overly technical.
+- Proof steps (3 bullets on the card — titles are visible; keep descriptions ≤48 chars):
+${PILLAR_SHARED_PROOF_STEPS.map(
+    (s, i) =>
+      `  ${i + 1}. Title ~ "${s.title}" — ${s.description} (theme: ${anchors.proofStepThemes[i]})`
+  ).join("\n")}
+  You may reword titles/descriptions for rhythm, but each bullet must hit the same point as the anchor.
+- Do NOT drift into generic SaaS hype, dense fintech jargon, or repeat footer trust lines in the subhead.`;
+  }
 
   return `
 PILLAR COPY GUARDRAILS (canonical messaging — light rephrasing OK, same meaning required):

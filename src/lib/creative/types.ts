@@ -252,6 +252,8 @@ export interface CreativeDirectorInput {
   customBrief?: Partial<CreativeBrief>;
   /** Freeform topic/angle for custom-request campaigns */
   customRequest?: string;
+  /** Prior custom-request headlines to avoid reusing */
+  avoidedHeadlines?: string[];
   /** Expensive: generate AI images for all concepts before selection. Default false. */
   generateConceptImages?: boolean;
 }

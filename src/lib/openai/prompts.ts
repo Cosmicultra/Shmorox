@@ -130,9 +130,14 @@ Rules:
     ? `\nCustom request topic (address this angle):\n"""${customRequest.trim()}"""\n`
     : "";
 
+  const isCustomRequest = contentPillarId === "custom-request";
   const user = `Content pillar: ${pillar.title}
 Description: ${pillar.description}
-Headline seed: ${pillar.headline}
+${
+  isCustomRequest
+    ? "Headline seed: (none — write fresh copy from the custom request topic)"
+    : `Headline seed: ${pillar.headline}`
+}
 Subhead seed: ${pillar.subhead}
 ${customBlock}
 Write one caption per platform:
