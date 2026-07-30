@@ -14,10 +14,17 @@ export function normalizeCampaign(raw: Partial<CampaignRun> & { id: string }): C
           ? "running"
           : "draft";
 
+  const contentMode =
+    raw.contentMode ??
+    (raw.contentPillar === "personal-brand" ? "personal-brand" : "ad");
+
   return {
     id: raw.id,
     brand: "AdvisorPilot",
     contentPillar: raw.contentPillar ?? "prospect-workflow",
+    contentMode,
+    personalBrandCategory: raw.personalBrandCategory,
+    personalBrandTopic: raw.personalBrandTopic,
     platforms: raw.platforms ?? [],
     phase,
     status: raw.status ?? defaultStatus,
@@ -66,6 +73,7 @@ export function normalizeCampaign(raw: Partial<CampaignRun> & { id: string }): C
     layoutStyle,
     canvasStyle,
     customRequest: raw.customRequest,
+    storyAnswers: raw.storyAnswers,
     generationCost: raw.generationCost,
     pipelineFallbackReason: raw.pipelineFallbackReason,
   };

@@ -1,4 +1,5 @@
 import { needsCreativeResume } from "./creative/checkpoint";
+import { isPersonalBrandCampaign } from "./knowledge/personal-brand";
 import type { CampaignRun, ReviewResult } from "./types";
 
 type GetResult = (id: string) => ReviewResult | undefined;
@@ -17,6 +18,9 @@ export function isCampaignPipelineSettled(campaignId: string): boolean {
 
 /** Campaign already produced ads — never auto-run pipeline again on revisit. */
 export function campaignHasGeneratedAds(campaign: CampaignRun): boolean {
+  if (isPersonalBrandCampaign(campaign.contentPillar, campaign.contentMode)) {
+    return isPackagingComplete(campaign);
+  }
   if (campaign.ads.length === 0) return false;
   if (adCardsAreGenerated(campaign)) return true;
   return campaign.ads.every(
@@ -86,6 +90,10 @@ export function shouldResumeCampaignPipeline(
 
   if (!isResumablePhase(campaign.phase)) return false;
 
+  if (isPersonalBrandCampaign(campaign.contentPillar, campaign.contentMode)) {
+    return campaign.phase === "generating" && !isPackagingComplete(campaign);
+  }
+
   // Only resume mid-flight creative work before any ads exist (tab closed during generation).
   return campaign.phase === "generating" && needsCreativeResume(campaign);
 }
@@ -103,6 +111,10 @@ export function shouldAutoStartFreshPipeline(campaign: CampaignRun): boolean {
   if (isCampaignPipelineSettled(campaign.id)) return false;
   if (campaign.status !== "running") return false;
   if (campaign.phase !== "generating") return false;
+  if (isPackagingComplete(campaign)) return false;
+  if (isPersonalBrandCampaign(campaign.contentPillar, campaign.contentMode)) {
+    return true;
+  }
   if (campaign.ads.length > 0) return false;
   const step = campaign.creativePipelineStep ?? "pending";
   if (step !== "pending") return false;

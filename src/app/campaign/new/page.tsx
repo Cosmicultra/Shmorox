@@ -10,6 +10,7 @@ import {
   Instagram,
   Twitter,
   Music2,
+  PenLine,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import {
@@ -24,10 +25,10 @@ import {
 } from "@/components/ui";
 import { SlidePanel } from "@/components/motion";
 import { generateId } from "@/lib/utils";
-import { ADVISORPILOT_KNOWLEDGE } from "@/lib/knowledge/advisorpilot";
+import { ADVISORPILOT_KNOWLEDGE, buildDemoUrl } from "@/lib/knowledge/advisorpilot";
+import { PERSONAL_BRAND_PILLAR_ID } from "@/lib/knowledge/personal-brand";
 import { SOCIAL_PLATFORMS, type SocialPlatform, type CampaignRun } from "@/lib/types";
 import type { AdLayoutStyle, CanvasStyle } from "@/lib/ad/ad-template-registry";
-import { buildDemoUrl } from "@/lib/knowledge/advisorpilot";
 
 const STEPS = ["Content Pillar", "Platforms", "Confirm", "Launch"];
 const CUSTOM_REQUEST_PILLAR_ID = "custom-request";
@@ -48,6 +49,7 @@ export default function NewCampaignPage() {
   const [customRequest, setCustomRequest] = useState("");
   const [customRequestDraft, setCustomRequestDraft] = useState("");
   const [customRequestOpen, setCustomRequestOpen] = useState(false);
+  const [personalBrandTopic, setPersonalBrandTopic] = useState("");
   const [platforms, setPlatforms] = useState<SocialPlatform[]>([
     "linkedin",
     "instagram",
@@ -58,7 +60,10 @@ export default function NewCampaignPage() {
   const [layoutStyle, setLayoutStyle] = useState<AdLayoutStyle>("split-graphic");
   const [canvasStyle, setCanvasStyle] = useState<CanvasStyle>("gradient");
 
+  const isPersonalBrand = contentPillar === PERSONAL_BRAND_PILLAR_ID;
+
   const togglePlatform = (platform: SocialPlatform) => {
+    if (isPersonalBrand) return;
     setPlatforms((prev) =>
       prev.includes(platform) ? prev.filter((p) => p !== platform) : [...prev, platform]
     );
@@ -72,6 +77,9 @@ export default function NewCampaignPage() {
     }
     setContentPillar(pillarId);
     setCustomRequest("");
+    if (pillarId === PERSONAL_BRAND_PILLAR_ID) {
+      setPlatforms(["linkedin"]);
+    }
   };
 
   const confirmCustomRequest = () => {
@@ -89,7 +97,10 @@ export default function NewCampaignPage() {
       }
       return contentPillar !== null;
     }
-    if (step === 1) return platforms.length > 0;
+    if (step === 1) {
+      if (isPersonalBrand) return true;
+      return platforms.length > 0;
+    }
     return true;
   };
 
@@ -98,29 +109,34 @@ export default function NewCampaignPage() {
     if (contentPillar === CUSTOM_REQUEST_PILLAR_ID && !customRequest.trim()) return;
     setSubmitting(true);
 
+    const personalBrand = contentPillar === PERSONAL_BRAND_PILLAR_ID;
+
     const campaign: CampaignRun = {
       id: generateId(),
       brand: "AdvisorPilot",
-      contentPillar: contentPillar,
-      platforms,
-      generateConceptImages,
-      layoutStyle,
-      canvasStyle,
-      customRequest:
-        contentPillar === CUSTOM_REQUEST_PILLAR_ID ? customRequest.trim() : undefined,
+      contentPillar,
+      contentMode: personalBrand ? "personal-brand" : "ad",
+      platforms: personalBrand ? ["linkedin"] : platforms,
+      generateConceptImages: personalBrand ? false : generateConceptImages,
+      layoutStyle: personalBrand ? "text-only" : layoutStyle,
+      canvasStyle: personalBrand ? "clean" : canvasStyle,
+      customRequest: personalBrand
+        ? personalBrandTopic.trim() || undefined
+        : contentPillar === CUSTOM_REQUEST_PILLAR_ID
+          ? customRequest.trim()
+          : undefined,
       phase: "generating",
       status: "running",
       ads: [],
       iteration: 0,
       fixHistory: [],
       hashtags: [],
-      qrUrl: buildDemoUrl("social"),
+      qrUrl: personalBrand ? "" : buildDemoUrl("social"),
       createdAt: new Date().toISOString(),
     };
 
     addCampaign(campaign);
     launchCampaignPipeline(campaign.id);
-    // Generation runs in the app shell — leave the detail page anytime.
     router.push("/");
   };
 
@@ -142,7 +158,7 @@ export default function NewCampaignPage() {
           New AdvisorPilot Campaign
         </h1>
         <p className="mt-2 text-secondary">
-          Generate organic social ads, run legal review, and prepare posts for all platforms.
+          Generate organic social ads or LinkedIn personal brand posts, then approve and publish.
         </p>
       </div>
 
@@ -153,141 +169,215 @@ export default function NewCampaignPage() {
           {step === 0 && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-semibold text-primary">Choose a content pillar</h2>
+                <h2 className="text-xl font-semibold text-primary">Choose what to create</h2>
                 <p className="mt-1 text-sm text-secondary">
-                  Each pillar maps to a core AdvisorPilot value proposition.
+                  Product campaigns build ad cards. Personal Brand writes text-only LinkedIn posts in
+                  Christopher&apos;s voice.
                 </p>
               </div>
-              <div className="grid gap-3">
-                {ADVISORPILOT_KNOWLEDGE.contentPillars.map((pillar) => {
-                  const selected = contentPillar === pillar.id;
-                  const isCustom = pillar.id === CUSTOM_REQUEST_PILLAR_ID;
-                  return (
-                    <SelectionTile
-                      key={pillar.id}
-                      selected={selected}
-                      onClick={() => selectPillar(pillar.id)}
+
+              <SelectionTile
+                selected={isPersonalBrand}
+                onClick={() => selectPillar(PERSONAL_BRAND_PILLAR_ID)}
+              >
+                <div className="flex items-start gap-3">
+                  <PenLine
+                    className={`mt-0.5 h-5 w-5 shrink-0 ${isPersonalBrand ? "text-gold" : "text-accent"}`}
+                  />
+                  <div>
+                    <p className="font-medium">Personal Brand (LinkedIn)</p>
+                    <p
+                      className={`mt-1 text-sm ${isPersonalBrand ? "text-inverse/70" : "text-secondary"}`}
                     >
-                      <p className="font-medium">{pillar.title}</p>
-                      <p className={`mt-1 text-sm ${selected ? "text-inverse/70" : "text-secondary"}`}>
-                        {isCustom && selected && customRequest
-                          ? customRequest
-                          : pillar.headline}
-                      </p>
-                      <p className={`mt-2 text-xs ${selected ? "text-inverse/50" : "text-secondary/70"}`}>
-                        {pillar.description}
-                      </p>
-                      {isCustom && selected && customRequest ? (
-                        <p className={`mt-2 text-xs font-medium ${selected ? "text-gold" : "text-accent"}`}>
-                          Edit topic
+                      Storytelling, education, and thought leadership — plain text ready to paste
+                      and post.
+                    </p>
+                    <p
+                      className={`mt-2 text-xs ${isPersonalBrand ? "text-inverse/50" : "text-secondary/70"}`}
+                    >
+                      Not an ad card. Not product marketing. Builds trust through valuable content.
+                    </p>
+                  </div>
+                </div>
+              </SelectionTile>
+
+              {isPersonalBrand && (
+                <Field
+                  label="Topic or recent experience (optional)"
+                  hint="Leave blank to auto-pick a category. Or steer with a lesson, moment, or angle."
+                >
+                  <Textarea
+                    value={personalBrandTopic}
+                    onChange={(event) => setPersonalBrandTopic(event.target.value)}
+                    placeholder="Example: A lesson from a Roth conversion conversation this week…"
+                    rows={3}
+                  />
+                </Field>
+              )}
+
+              <div>
+                <h3 className="mb-3 text-sm font-semibold text-primary">AdvisorPilot product pillars</h3>
+                <div className="grid gap-3">
+                  {ADVISORPILOT_KNOWLEDGE.contentPillars.map((pillar) => {
+                    const selected = contentPillar === pillar.id;
+                    const isCustom = pillar.id === CUSTOM_REQUEST_PILLAR_ID;
+                    return (
+                      <SelectionTile
+                        key={pillar.id}
+                        selected={selected}
+                        onClick={() => selectPillar(pillar.id)}
+                      >
+                        <p className="font-medium">{pillar.title}</p>
+                        <p className={`mt-1 text-sm ${selected ? "text-inverse/70" : "text-secondary"}`}>
+                          {isCustom && selected && customRequest
+                            ? customRequest
+                            : pillar.headline}
                         </p>
-                      ) : null}
-                    </SelectionTile>
-                  );
-                })}
+                        <p className={`mt-2 text-xs ${selected ? "text-inverse/50" : "text-secondary/70"}`}>
+                          {pillar.description}
+                        </p>
+                        {isCustom && selected && customRequest ? (
+                          <p className={`mt-2 text-xs font-medium ${selected ? "text-gold" : "text-accent"}`}>
+                            Edit topic
+                          </p>
+                        ) : null}
+                      </SelectionTile>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
 
           {step === 1 && (
             <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-primary">Select platforms</h2>
-                <p className="mt-1 text-sm text-secondary">
-                  We will generate platform-optimized 1:1 and 9:16 ad variants with tailored hashtags.
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {SOCIAL_PLATFORMS.map((platform) => {
-                  const Icon = PLATFORM_ICONS[platform.id];
-                  const selected = platforms.includes(platform.id);
-                  return (
-                    <SelectionTile
-                      key={platform.id}
-                      selected={selected}
-                      onClick={() => togglePlatform(platform.id)}
-                    >
-                      <Icon
-                        className={`mb-2 h-5 w-5 ${selected ? "text-gold" : "text-accent"}`}
-                      />
-                      <p className="font-medium">{platform.label}</p>
-                      <p className={`mt-1 text-xs ${selected ? "text-inverse/70" : "text-secondary"}`}>
-                        {platform.description}
-                      </p>
-                      <p className={`mt-2 font-mono text-xs ${selected ? "text-inverse/50" : "text-secondary/60"}`}>
-                        {platform.aspectRatios.join(" + ")} · up to {platform.hashtagLimit} hashtags
-                      </p>
-                    </SelectionTile>
-                  );
-                })}
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-primary">Layout style</h3>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {(
-                    [
-                      {
-                        id: "split-graphic" as const,
-                        title: "Split with product graphic",
-                        description: "Copy on the left, lifestyle photo and UI on the right.",
-                      },
-                      {
-                        id: "text-only" as const,
-                        title: "Text-only",
-                        description: "No graphic — full-width copy for LinkedIn A/B testing.",
-                      },
-                    ] as const
-                  ).map((option) => (
-                    <SelectionTile
-                      key={option.id}
-                      selected={layoutStyle === option.id}
-                      onClick={() => {
-                        setLayoutStyle(option.id);
-                        if (option.id === "text-only") setCanvasStyle("clean");
-                      }}
-                    >
-                      <p className="font-medium">{option.title}</p>
-                      <p
-                        className={`mt-1 text-xs ${layoutStyle === option.id ? "text-inverse/70" : "text-secondary"}`}
-                      >
-                        {option.description}
-                      </p>
-                    </SelectionTile>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-primary">Background</h3>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {(
-                    [
-                      {
-                        id: "gradient" as const,
-                        title: "Soft gradient",
-                        description: "Current branded canvas with subtle texture.",
-                      },
-                      {
-                        id: "clean" as const,
-                        title: "Clean white",
-                        description: "Flat white background — recommended for LinkedIn static.",
-                      },
-                    ] as const
-                  ).map((option) => (
-                    <SelectionTile
-                      key={option.id}
-                      selected={canvasStyle === option.id}
-                      onClick={() => setCanvasStyle(option.id)}
-                    >
-                      <p className="font-medium">{option.title}</p>
-                      <p
-                        className={`mt-1 text-xs ${canvasStyle === option.id ? "text-inverse/70" : "text-secondary"}`}
-                      >
-                        {option.description}
-                      </p>
-                    </SelectionTile>
-                  ))}
-                </div>
-              </div>
+              {isPersonalBrand ? (
+                <>
+                  <div>
+                    <h2 className="text-xl font-semibold text-primary">LinkedIn only</h2>
+                    <p className="mt-1 text-sm text-secondary">
+                      Personal brand posts are text-only LinkedIn content — no ad cards, images, or
+                      demo links.
+                    </p>
+                  </div>
+                  <SelectionTile selected onClick={() => undefined}>
+                    <Linkedin className="mb-2 h-5 w-5 text-gold" />
+                    <p className="font-medium">LinkedIn</p>
+                    <p className="mt-1 text-xs text-inverse/70">
+                      Long-form post with hook, story, takeaway, discussion question, and 3–5
+                      hashtags.
+                    </p>
+                  </SelectionTile>
+                  <HelpTip>
+                    Category mix rotates automatically: ~40% educational, 30% founder journey, 20%
+                    product updates, 10% personal.
+                  </HelpTip>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h2 className="text-xl font-semibold text-primary">Select platforms</h2>
+                    <p className="mt-1 text-sm text-secondary">
+                      We will generate platform-optimized 1:1 and 9:16 ad variants with tailored
+                      hashtags.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {SOCIAL_PLATFORMS.map((platform) => {
+                      const Icon = PLATFORM_ICONS[platform.id];
+                      const selected = platforms.includes(platform.id);
+                      return (
+                        <SelectionTile
+                          key={platform.id}
+                          selected={selected}
+                          onClick={() => togglePlatform(platform.id)}
+                        >
+                          <Icon
+                            className={`mb-2 h-5 w-5 ${selected ? "text-gold" : "text-accent"}`}
+                          />
+                          <p className="font-medium">{platform.label}</p>
+                          <p className={`mt-1 text-xs ${selected ? "text-inverse/70" : "text-secondary"}`}>
+                            {platform.description}
+                          </p>
+                          <p
+                            className={`mt-2 font-mono text-xs ${selected ? "text-inverse/50" : "text-secondary/60"}`}
+                          >
+                            {platform.aspectRatios.join(" + ")} · up to {platform.hashtagLimit}{" "}
+                            hashtags
+                          </p>
+                        </SelectionTile>
+                      );
+                    })}
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-primary">Layout style</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(
+                        [
+                          {
+                            id: "split-graphic" as const,
+                            title: "Split with product graphic",
+                            description: "Copy on the left, lifestyle photo and UI on the right.",
+                          },
+                          {
+                            id: "text-only" as const,
+                            title: "Text-only",
+                            description: "No graphic — full-width copy for LinkedIn A/B testing.",
+                          },
+                        ] as const
+                      ).map((option) => (
+                        <SelectionTile
+                          key={option.id}
+                          selected={layoutStyle === option.id}
+                          onClick={() => {
+                            setLayoutStyle(option.id);
+                            if (option.id === "text-only") setCanvasStyle("clean");
+                          }}
+                        >
+                          <p className="font-medium">{option.title}</p>
+                          <p
+                            className={`mt-1 text-xs ${layoutStyle === option.id ? "text-inverse/70" : "text-secondary"}`}
+                          >
+                            {option.description}
+                          </p>
+                        </SelectionTile>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-primary">Background</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(
+                        [
+                          {
+                            id: "gradient" as const,
+                            title: "Soft gradient",
+                            description: "Current branded canvas with subtle texture.",
+                          },
+                          {
+                            id: "clean" as const,
+                            title: "Clean white",
+                            description: "Flat white background — recommended for LinkedIn static.",
+                          },
+                        ] as const
+                      ).map((option) => (
+                        <SelectionTile
+                          key={option.id}
+                          selected={canvasStyle === option.id}
+                          onClick={() => setCanvasStyle(option.id)}
+                        >
+                          <p className="font-medium">{option.title}</p>
+                          <p
+                            className={`mt-1 text-xs ${canvasStyle === option.id ? "text-inverse/70" : "text-secondary"}`}
+                          >
+                            {option.description}
+                          </p>
+                        </SelectionTile>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -301,34 +391,46 @@ export default function NewCampaignPage() {
               </div>
 
               <dl className="divide-y divide-border rounded-xl border border-border">
-                {[
-                  ["Brand", ADVISORPILOT_KNOWLEDGE.brandMark],
-                  ["Content Pillar", selectedPillar?.title],
-                  ...(contentPillar === CUSTOM_REQUEST_PILLAR_ID && customRequest
-                    ? [["Custom Topic", customRequest] as const]
-                    : [["Headline Preview", selectedPillar?.headline] as const]),
-                  [
-                    "Platforms",
-                    platforms
-                      .map((p) => SOCIAL_PLATFORMS.find((sp) => sp.id === p)?.label)
-                      .join(", "),
-                  ],
-                  [
-                    "Ad Variants",
-                    `${platforms.reduce((sum, p) => {
-                      const config = SOCIAL_PLATFORMS.find((sp) => sp.id === p);
-                      return sum + (config?.aspectRatios.length ?? 0);
-                    }, 0)} cards (1:1 + 9:16)`,
-                  ],
-                  [
-                    "Layout",
-                    layoutStyle === "text-only" ? "Text-only" : "Split with product graphic",
-                  ],
-                  [
-                    "Background",
-                    canvasStyle === "clean" ? "Clean white" : "Soft gradient",
-                  ],
-                ].map(([label, value]) => (
+                {(isPersonalBrand
+                  ? [
+                      ["Mode", "Personal Brand (text-only LinkedIn)"],
+                      ["Voice", "Christopher — advisor & founder"],
+                      [
+                        "Topic",
+                        personalBrandTopic.trim() || "Auto (weighted category rotation)",
+                      ],
+                      ["Platform", "LinkedIn"],
+                      ["Output", "Plain text post ready to approve & post"],
+                    ]
+                  : [
+                      ["Brand", ADVISORPILOT_KNOWLEDGE.brandMark],
+                      ["Content Pillar", selectedPillar?.title],
+                      ...(contentPillar === CUSTOM_REQUEST_PILLAR_ID && customRequest
+                        ? [["Custom Topic", customRequest] as const]
+                        : [["Headline Preview", selectedPillar?.headline] as const]),
+                      [
+                        "Platforms",
+                        platforms
+                          .map((p) => SOCIAL_PLATFORMS.find((sp) => sp.id === p)?.label)
+                          .join(", "),
+                      ],
+                      [
+                        "Ad Variants",
+                        `${platforms.reduce((sum, p) => {
+                          const config = SOCIAL_PLATFORMS.find((sp) => sp.id === p);
+                          return sum + (config?.aspectRatios.length ?? 0);
+                        }, 0)} cards (1:1 + 9:16)`,
+                      ],
+                      [
+                        "Layout",
+                        layoutStyle === "text-only" ? "Text-only" : "Split with product graphic",
+                      ],
+                      [
+                        "Background",
+                        canvasStyle === "clean" ? "Clean white" : "Soft gradient",
+                      ],
+                    ]
+                ).map(([label, value]) => (
                   <div key={label} className="flex gap-4 px-4 py-3 sm:px-5">
                     <dt className="w-36 shrink-0 text-sm font-medium text-secondary">{label}</dt>
                     <dd className="text-sm text-primary whitespace-pre-wrap">{value}</dd>
@@ -336,29 +438,40 @@ export default function NewCampaignPage() {
                 ))}
               </dl>
 
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border p-4 transition-colors hover:bg-muted/30">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={generateConceptImages}
-                  onChange={(event) => setGenerateConceptImages(event.target.checked)}
-                />
-                <span>
-                  <span className="block text-sm font-medium text-primary">
-                    Generate AI preview images for all 3 concepts
-                  </span>
-                  <span className="mt-1 block text-xs text-secondary">
-                    Off by default. When enabled, the pipeline generates up to 3 AI images before
-                    concept selection (significantly higher cost). Normally only the winning concept
-                    gets one master image.
-                  </span>
-                </span>
-              </label>
+              {!isPersonalBrand && (
+                <>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border p-4 transition-colors hover:bg-muted/30">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={generateConceptImages}
+                      onChange={(event) => setGenerateConceptImages(event.target.checked)}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-primary">
+                        Generate AI preview images for all 3 concepts
+                      </span>
+                      <span className="mt-1 block text-xs text-secondary">
+                        Off by default. When enabled, the pipeline generates up to 3 AI images before
+                        concept selection (significantly higher cost). Normally only the winning
+                        concept gets one master image.
+                      </span>
+                    </span>
+                  </label>
 
-              <HelpTip>
-                Expect ~3 API calls per campaign: 1 batched exploration (gpt-4o-mini), 1 master
-                image, 1 caption pass. Layout variants use rendering, not extra AI images.
-              </HelpTip>
+                  <HelpTip>
+                    Expect ~3 API calls per campaign: 1 batched exploration (gpt-4o-mini), 1 master
+                    image, 1 caption pass. Layout variants use rendering, not extra AI images.
+                  </HelpTip>
+                </>
+              )}
+
+              {isPersonalBrand && (
+                <HelpTip>
+                  One premium text generation pass. No ad cards, legal image loop, or QR packaging.
+                  You approve and post from the campaign page.
+                </HelpTip>
+              )}
             </div>
           )}
 

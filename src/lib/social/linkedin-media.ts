@@ -1,19 +1,37 @@
 /**
- * Upload an image to LinkedIn Assets API for use in ugcPosts.
- * @see https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin
+ * Upload an image via LinkedIn Images API for use with /rest/posts.
+ * @see https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/images-api
  */
+
+export const LINKEDIN_API_VERSION = "202502";
+
+export function linkedInApiHeaders(accessToken: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "LinkedIn-Version": LINKEDIN_API_VERSION,
+    "X-Restli-Protocol-Version": "2.0.0",
+  };
+}
 
 async function loadImageBytes(
   imageDataUrl: string
 ): Promise<{ bytes: Buffer; contentType: string }> {
   if (imageDataUrl.startsWith("data:")) {
-    const match = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) {
+    // Avoid regex on multi-MB base64 payloads — `.+` can blow the call stack.
+    const comma = imageDataUrl.indexOf(",");
+    if (comma < 0) {
       throw new Error("Invalid image data URL");
     }
+    const header = imageDataUrl.slice(0, comma);
+    const base64 = imageDataUrl.slice(comma + 1);
+    if (!header.includes(";base64")) {
+      throw new Error("Invalid image data URL (expected base64)");
+    }
+    const contentType = header.slice("data:".length).split(";")[0] || "image/png";
     return {
-      contentType: match[1] || "image/png",
-      bytes: Buffer.from(match[2], "base64"),
+      contentType,
+      bytes: Buffer.from(base64, "base64"),
     };
   }
 
@@ -30,86 +48,72 @@ async function loadImageBytes(
   throw new Error("Unsupported image format. Expected a data URL or https URL.");
 }
 
-type RegisterUploadResponse = {
+type InitializeUploadResponse = {
   value?: {
-    asset?: string;
-    uploadMechanism?: {
-      "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"?: {
-        uploadUrl?: string;
-        headers?: Record<string, string>;
-      };
-    };
+    uploadUrl?: string;
+    image?: string;
   };
 };
 
-/** Register + upload image; returns digitalmediaAsset URN for ugcPosts.media[].media */
+/** Initialize + upload image; returns urn:li:image:… for Posts API content.media.id */
 export async function uploadLinkedInImage(options: {
   accessToken: string;
   ownerUrn: string;
   imageDataUrl: string;
 }): Promise<string> {
   const { accessToken, ownerUrn, imageDataUrl } = options;
-  const { bytes, contentType } = await loadImageBytes(imageDataUrl);
+  const { bytes } = await loadImageBytes(imageDataUrl);
 
-  const registerRes = await fetch("https://api.linkedin.com/v2/assets?action=registerUpload", {
+  const registerRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      "X-Restli-Protocol-Version": "2.0.0",
-    },
+    headers: linkedInApiHeaders(accessToken),
     body: JSON.stringify({
-      registerUploadRequest: {
-        recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+      initializeUploadRequest: {
         owner: ownerUrn,
-        serviceRelationships: [
-          {
-            relationshipType: "OWNER",
-            identifier: "urn:li:userGeneratedContent",
-          },
-        ],
-        supportedUploadMechanism: ["SYNCHRONOUS_UPLOAD"],
       },
     }),
   });
 
   const registerText = await registerRes.text();
   if (!registerRes.ok) {
-    throw new Error(`LinkedIn image register failed: ${registerText}`);
+    throw new Error(`LinkedIn image register failed (${registerRes.status}): ${registerText}`);
   }
 
-  let registerJson: RegisterUploadResponse;
+  let registerJson: InitializeUploadResponse;
   try {
-    registerJson = JSON.parse(registerText) as RegisterUploadResponse;
+    registerJson = JSON.parse(registerText) as InitializeUploadResponse;
   } catch {
     throw new Error(`LinkedIn image register returned non-JSON: ${registerText.slice(0, 200)}`);
   }
 
-  const assetUrn = registerJson.value?.asset;
-  const uploadMeta =
-    registerJson.value?.uploadMechanism?.["com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"];
-  const uploadUrl = uploadMeta?.uploadUrl;
+  const imageUrn = registerJson.value?.image;
+  const uploadUrl = registerJson.value?.uploadUrl;
 
-  if (!assetUrn || !uploadUrl) {
-    throw new Error("LinkedIn image register did not return uploadUrl/asset");
+  if (!imageUrn || !uploadUrl) {
+    throw new Error("LinkedIn image register did not return uploadUrl/image");
   }
 
-  const uploadHeaders: Record<string, string> = {
-    Authorization: `Bearer ${accessToken}`,
-    "Content-Type": contentType,
-    ...(uploadMeta?.headers ?? {}),
-  };
-
+  // Pre-signed upload URL — do not send Authorization (LinkedIn rejects it).
   const uploadRes = await fetch(uploadUrl, {
     method: "PUT",
-    headers: uploadHeaders,
-    body: new Uint8Array(bytes),
+    headers: {
+      "Content-Type": "application/octet-stream",
+    },
+    body: bytes,
   });
 
   if (!uploadRes.ok) {
     const err = await uploadRes.text();
-    throw new Error(`LinkedIn image upload failed: ${err || uploadRes.statusText}`);
+    throw new Error(`LinkedIn image upload failed (${uploadRes.status}): ${err || uploadRes.statusText}`);
   }
 
-  return assetUrn;
+  return imageUrn;
+}
+
+/**
+ * Escape reserved characters in Posts API commentary.
+ * @see https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api
+ */
+export function escapeLinkedInCommentary(text: string): string {
+  return text.replace(/([|{}@\[\]()<>*_~\\])/g, "\\$1");
 }

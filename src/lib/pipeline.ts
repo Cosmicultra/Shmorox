@@ -1,6 +1,8 @@
 import { generateId } from "./utils";
 import { runAIReview } from "./review-engine";
 import { buildDemoUrl, ADVISORPILOT_KNOWLEDGE } from "./knowledge/advisorpilot";
+import { isPersonalBrandCampaign } from "./knowledge/personal-brand";
+import type { PersonalBrandCategoryId } from "./knowledge/personal-brand";
 import { sanitizeNoEmDash } from "./ad/content-guardrails";
 import { generateAds } from "./ad/generator";
 import { campaignPatchFromCheckpoint, checkpointFromCampaign, isCreativeStepDone, needsCreativeResume } from "./creative/checkpoint";
@@ -18,6 +20,7 @@ import { lintAdBatch } from "./ad/ad-layout-linter";
 import { renderAllAds, renderAdsForPipeline, invalidateAdRenderCache } from "./ad/image-renderer";
 import { getHashtagsForPlatforms } from "./ad/hashtags";
 import { generateCaptionsForPlatforms } from "./ad/caption-generator";
+import { fetchPersonalBrandPost } from "./personal-brand/client";
 import type {
   CampaignRun,
   GeneratedAd,
@@ -31,6 +34,7 @@ import { unlockPipelineInSession } from "./pipeline-lock";
 import { clearInitialPipelineRun } from "./pipeline-launch";
 import {
   applyApprovedAssetCost,
+  deltaToReport,
   mergeCostDeltas,
   type GenerationCostReport,
 } from "./openai/cost-tracker";
@@ -70,6 +74,98 @@ export interface PipelineInput {
   customRequest?: string;
   /** Prior custom-request headlines to avoid reusing */
   avoidedHeadlines?: string[];
+  contentMode?: CampaignRun["contentMode"];
+  personalBrandCategory?: PersonalBrandCategoryId;
+  storyAnswers?: string[];
+  recentPersonalBrandCategories?: PersonalBrandCategoryId[];
+  avoidedPersonalBrandTopics?: string[];
+}
+
+function extractHashtagsFromPost(post: string): string[] {
+  return post.match(/#[\w]+/g) ?? [];
+}
+
+async function runPersonalBrandPipeline(
+  campaignId: string,
+  input: PipelineInput,
+  callbacks: PipelineCallbacks
+): Promise<CampaignRun> {
+  callbacks.onProgress("Writing your LinkedIn personal brand post…", "generating");
+  callbacks.onCampaignUpdate({
+    status: "running",
+    phase: "generating",
+    contentMode: "personal-brand",
+    platforms: ["linkedin"],
+    ads: [],
+    qrUrl: "",
+  });
+  touchPipeline(campaignId);
+
+  const result = await fetchPersonalBrandPost({
+    category: input.personalBrandCategory,
+    topic: input.customRequest,
+    storyAnswers: input.storyAnswers,
+    recentCategories: input.recentPersonalBrandCategories,
+    avoidedTopics: input.avoidedPersonalBrandTopics,
+  });
+
+  const hashtags = extractHashtagsFromPost(result.post);
+  const captionsByPlatform: Partial<Record<SocialPlatform, string>> = {
+    linkedin: result.post,
+  };
+  const hashtagsByPlatform: Partial<Record<SocialPlatform, string[]>> = {
+    linkedin: hashtags,
+  };
+  const generationCost = result.costDelta
+    ? applyApprovedAssetCost(deltaToReport(result.costDelta), 1)
+    : undefined;
+
+  callbacks.onProgress("Personal brand post ready to publish!", "ready_to_post");
+  markCampaignPipelineSettled(campaignId);
+  callbacks.onCampaignUpdate({
+    phase: "ready_to_post",
+    status: "approved",
+    contentMode: "personal-brand",
+    personalBrandCategory: result.category,
+    personalBrandTopic: result.topic,
+    platforms: ["linkedin"],
+    ads: [],
+    captionsByPlatform,
+    caption: result.post,
+    hashtags,
+    hashtagsByPlatform,
+    qrUrl: "",
+    completedAt: new Date().toISOString(),
+    generationCost,
+    pipelineFallbackReason:
+      result.source === "template"
+        ? result.message ?? "Personal brand used template fallback."
+        : undefined,
+    progressMessage: "Personal brand post ready to publish!",
+  });
+
+  return {
+    id: campaignId,
+    brand: "AdvisorPilot",
+    contentPillar: input.contentPillarId,
+    contentMode: "personal-brand",
+    personalBrandCategory: result.category,
+    personalBrandTopic: result.topic,
+    platforms: ["linkedin"],
+    phase: "ready_to_post",
+    status: "approved",
+    ads: [],
+    iteration: 0,
+    fixHistory: [],
+    hashtags,
+    hashtagsByPlatform,
+    captionsByPlatform,
+    caption: result.post,
+    qrUrl: "",
+    generationCost,
+    createdAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+  };
 }
 
 async function runLegalReview(
@@ -299,6 +395,13 @@ export async function runCampaignPipeline(
   clearInitialPipelineRun(campaignId);
 
   try {
+  if (
+    isPersonalBrandCampaign(input.contentPillarId, input.contentMode) ||
+    input.contentMode === "personal-brand"
+  ) {
+    return await runPersonalBrandPipeline(campaignId, input, callbacks);
+  }
+
   const qrUrl = buildDemoUrl("social", campaignId);
   const fixHistory: FixIteration[] = [];
 
@@ -444,7 +547,24 @@ export async function resumeCampaignPipeline(
     avoidedHeadlines: campaign.contentPillar === "custom-request"
       ? callbacks.getAvoidedHeadlines?.(campaign.id)
       : undefined,
+    contentMode: campaign.contentMode,
+    personalBrandCategory: campaign.personalBrandCategory,
+    storyAnswers: campaign.storyAnswers,
   };
+
+  if (isPersonalBrandCampaign(campaign.contentPillar, campaign.contentMode)) {
+    if (isPackagingComplete(campaign)) {
+      callbacks.onCampaignUpdate({
+        phase: "ready_to_post",
+        status: "approved",
+        progressMessage: "Personal brand post ready to publish!",
+      });
+      return;
+    }
+    await runPersonalBrandPipeline(campaign.id, input, callbacks);
+    return;
+  }
+
   const qrUrl = campaign.qrUrl || buildDemoUrl("social", campaign.id);
   let ads = campaign.ads;
   let iteration = campaign.iteration ?? 0;

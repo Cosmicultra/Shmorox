@@ -1,4 +1,6 @@
 import { collectPriorCustomHeadlines } from "@/lib/creative/custom-headline-history";
+import { isPersonalBrandCampaign } from "@/lib/knowledge/personal-brand";
+import type { PersonalBrandCategoryId } from "@/lib/knowledge/personal-brand";
 import { hasPendingInitialPipelineRun } from "@/lib/pipeline-launch";
 import { lockPipelineInSession } from "@/lib/pipeline-lock";
 import {
@@ -13,6 +15,39 @@ import {
 } from "@/lib/pipeline-resume";
 import { isPipelineActive } from "@/lib/pipeline-state";
 import type { CampaignRun, ReviewResult, ReviewSubmission } from "@/lib/types";
+
+function collectRecentPersonalBrandCategories(
+  campaigns: CampaignRun[],
+  excludeCampaignId: string
+): PersonalBrandCategoryId[] {
+  return campaigns
+    .filter(
+      (c) =>
+        c.id !== excludeCampaignId &&
+        isPersonalBrandCampaign(c.contentPillar, c.contentMode) &&
+        c.personalBrandCategory
+    )
+    .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
+    .map((c) => c.personalBrandCategory!)
+    .slice(0, 8);
+}
+
+function collectRecentPersonalBrandTopics(
+  campaigns: CampaignRun[],
+  excludeCampaignId: string
+): string[] {
+  return campaigns
+    .filter(
+      (c) =>
+        c.id !== excludeCampaignId &&
+        isPersonalBrandCampaign(c.contentPillar, c.contentMode) &&
+        (c.personalBrandTopic || c.customRequest)
+    )
+    .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
+    .map((c) => c.personalBrandTopic || c.customRequest || "")
+    .filter(Boolean)
+    .slice(0, 10);
+}
 
 export type PipelineControllerDeps = {
   getCampaign: (id: string) => CampaignRun | undefined;
@@ -85,6 +120,7 @@ export async function ensureCampaignPipeline(
     const callbacks = buildCallbacks(campaignId, deps);
 
     if (pendingLaunch || shouldAutoStart) {
+      const allCampaigns = deps.getCampaigns();
       await runCampaignPipeline(
         campaignId,
         {
@@ -96,8 +132,23 @@ export async function ensureCampaignPipeline(
           customRequest: campaign.customRequest,
           avoidedHeadlines:
             campaign.contentPillar === "custom-request"
-              ? collectPriorCustomHeadlines(deps.getCampaigns(), campaignId)
+              ? collectPriorCustomHeadlines(allCampaigns, campaignId)
               : undefined,
+          contentMode: campaign.contentMode,
+          personalBrandCategory: campaign.personalBrandCategory,
+          storyAnswers: campaign.storyAnswers,
+          recentPersonalBrandCategories: isPersonalBrandCampaign(
+            campaign.contentPillar,
+            campaign.contentMode
+          )
+            ? collectRecentPersonalBrandCategories(allCampaigns, campaignId)
+            : undefined,
+          avoidedPersonalBrandTopics: isPersonalBrandCampaign(
+            campaign.contentPillar,
+            campaign.contentMode
+          )
+            ? collectRecentPersonalBrandTopics(allCampaigns, campaignId)
+            : undefined,
         },
         callbacks
       );
@@ -132,14 +183,20 @@ export function syncBackgroundPipelines(
     if (isPipelineActive(campaign.id) || startedIds.has(campaign.id)) continue;
 
     if (
-      isLegalReviewPassed(campaign, deps.getResult) &&
-      isPackagingComplete(campaign)
+      isPackagingComplete(campaign) &&
+      (isPersonalBrandCampaign(campaign.contentPillar, campaign.contentMode) ||
+        isLegalReviewPassed(campaign, deps.getResult))
     ) {
       markCampaignPipelineSettled(campaign.id);
       deps.updateCampaign(campaign.id, {
         status: "approved",
         phase: "ready_to_post",
-        progressMessage: "Campaign package ready for posting!",
+        progressMessage: isPersonalBrandCampaign(
+          campaign.contentPillar,
+          campaign.contentMode
+        )
+          ? "Personal brand post ready to publish!"
+          : "Campaign package ready for posting!",
       });
       continue;
     }

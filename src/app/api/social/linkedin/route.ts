@@ -7,7 +7,11 @@ import {
   readLinkedInCredentials,
   writeLinkedInCredentials,
 } from "@/lib/social/linkedin-credentials";
-import { uploadLinkedInImage } from "@/lib/social/linkedin-media";
+import {
+  escapeLinkedInCommentary,
+  linkedInApiHeaders,
+  uploadLinkedInImage,
+} from "@/lib/social/linkedin-media";
 
 export async function GET() {
   const config = getLinkedInClientConfig();
@@ -115,73 +119,85 @@ export async function POST(req: NextRequest) {
 
   const authorUrn = getLinkedInAuthorUrn(credentials);
   const postingAsCompany = credentials.postAs === "organization" && !!credentials.organizationId;
+  const hasImage = typeof imageDataUrl === "string" && imageDataUrl.length > 0;
 
   try {
-    let shareContent: Record<string, unknown> = {
-      shareCommentary: { text },
-      shareMediaCategory: "NONE",
-    };
+    let imageUrn: string | undefined;
 
-    if (typeof imageDataUrl === "string" && imageDataUrl.length > 0) {
+    if (hasImage) {
       try {
-        const assetUrn = await uploadLinkedInImage({
+        imageUrn = await uploadLinkedInImage({
           accessToken: credentials.accessToken,
           ownerUrn: authorUrn,
           imageDataUrl,
         });
-        shareContent = {
-          shareCommentary: { text },
-          shareMediaCategory: "IMAGE",
-          media: [
-            {
-              status: "READY",
-              media: assetUrn,
-              title: { text: "AdvisorPilot" },
-            },
-          ],
-        };
       } catch (uploadErr) {
+        const msg = uploadErr instanceof Error ? uploadErr.message : "Unknown error";
+        console.error("[linkedin/post] image upload failed", {
+          authorUrn,
+          postAs: credentials.postAs,
+          error: msg.slice(0, 800),
+        });
         return NextResponse.json(
           {
             success: false,
-            message: `LinkedIn image upload failed: ${
-              uploadErr instanceof Error ? uploadErr.message : "Unknown error"
-            }`,
+            message: `LinkedIn image upload failed: ${msg}`,
           },
           { status: 502 }
         );
       }
     }
 
-    const res = await fetch("https://api.linkedin.com/v2/ugcPosts", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${credentials.accessToken}`,
-        "Content-Type": "application/json",
-        "X-Restli-Protocol-Version": "2.0.0",
+    const payload: Record<string, unknown> = {
+      author: authorUrn,
+      commentary: escapeLinkedInCommentary(text),
+      visibility: "PUBLIC",
+      distribution: {
+        feedDistribution: "MAIN_FEED",
+        targetEntities: [],
+        thirdPartyDistributionChannels: [],
       },
-      body: JSON.stringify({
-        author: authorUrn,
-        lifecycleState: "PUBLISHED",
-        specificContent: {
-          "com.linkedin.ugc.ShareContent": shareContent,
+      lifecycleState: "PUBLISHED",
+    };
+
+    if (imageUrn) {
+      payload.content = {
+        media: {
+          title: "AdvisorPilot",
+          id: imageUrn,
         },
-        visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" },
-      }),
+      };
+    }
+
+    const res = await fetch("https://api.linkedin.com/rest/posts", {
+      method: "POST",
+      headers: linkedInApiHeaders(credentials.accessToken),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
       const err = await res.text();
-      return NextResponse.json({ success: false, message: `LinkedIn API error: ${err}` }, { status: 502 });
+      console.error("[linkedin/post] rest/posts failed", {
+        status: res.status,
+        authorUrn,
+        postAs: credentials.postAs,
+        hasImage,
+        error: err.slice(0, 800),
+      });
+      return NextResponse.json(
+        { success: false, message: `LinkedIn API error (${res.status}): ${err}` },
+        { status: 502 }
+      );
     }
 
-    const data = await res.json();
+    const postId = res.headers.get("x-restli-id") || res.headers.get("X-RestLi-Id") || undefined;
+
     return NextResponse.json({
       success: true,
       message: postingAsCompany
         ? `Posted to ${credentials.organizationName ?? "company page"} successfully`
         : `Posted to your LinkedIn profile (${credentials.accountName}) successfully`,
-      postId: data.id,
+      postId,
       author: authorUrn,
     });
   } catch (err) {

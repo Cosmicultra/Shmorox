@@ -11,6 +11,9 @@ import {
   Send,
   AlertTriangle,
   ChevronDown,
+  Copy,
+  RefreshCw,
+  Check,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { Button, Card, Badge, RiskBadge, PipelineTimeline, InlineNotice } from "@/components/ui";
@@ -23,6 +26,8 @@ import { PostTextPreview } from "@/components/PostTextPreview";
 import { formatPostTextForApi } from "@/lib/ad/caption-generator";
 import { shouldSkipAdCardRerender } from "@/lib/pipeline-resume";
 import { getFullPostForPlatform } from "@/lib/post-package";
+import { isPersonalBrandCampaign } from "@/lib/knowledge/personal-brand";
+import { fetchPersonalBrandPost } from "@/lib/personal-brand/client";
 import { SOCIAL_PLATFORMS, type SocialPlatform, type Finding, type GeneratedAd } from "@/lib/types";
 import {
   getPillarTitle,
@@ -38,12 +43,17 @@ const AdPreviewModal = dynamic(
 const PIPELINE_RENDER_PHASES = ["generating", "legal_review", "fixing", "packaging", "approved"] as const;
 const QR_AD_PHASES = ["packaging", "approved", "ready_to_post", "posted"] as const;
 
-const PHASES = [
+const AD_PHASES = [
   { id: "generating", label: "Generate Ads" },
   { id: "legal_review", label: "Legal Review" },
   { id: "fixing", label: "Auto-Fix" },
   { id: "approved", label: "Approved" },
   { id: "packaging", label: "Package" },
+  { id: "ready_to_post", label: "Ready to Post" },
+];
+
+const PERSONAL_BRAND_PHASES = [
+  { id: "generating", label: "Write Post" },
   { id: "ready_to_post", label: "Ready to Post" },
 ];
 
@@ -57,6 +67,7 @@ export default function CampaignDetailPage() {
     hydrateCampaign,
     getResult,
     campaignsLoaded,
+    campaigns,
   } = useApp();
   const campaign = getCampaign(id);
   const [progress, setProgress] = useState("");
@@ -64,7 +75,13 @@ export default function CampaignDetailPage() {
   const [expandedFix, setExpandedFix] = useState<number | null>(null);
   const [previewAd, setPreviewAd] = useState<GeneratedAd | null>(null);
   const [renderingAds, setRenderingAds] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
   const imagesRegenerating = useRef(false);
+
+  const isPersonalBrand = campaign
+    ? isPersonalBrandCampaign(campaign.contentPillar, campaign.contentMode)
+    : false;
 
   useEffect(() => {
     if (campaign?.progressMessage) setProgress(campaign.progressMessage);
@@ -72,7 +89,6 @@ export default function CampaignDetailPage() {
 
   useEffect(() => {
     if (!campaignsLoaded || !id) return;
-    // Avoid clobbering an active background pipeline with a stale hydrate.
     if (isCampaignPipelineControllerActive(id)) return;
     void hydrateCampaign(id);
   }, [campaignsLoaded, id, hydrateCampaign]);
@@ -85,9 +101,9 @@ export default function CampaignDetailPage() {
     }
   }, [campaign, campaignsLoaded, router]);
 
-  // Restore cached PNGs first; only render ads that were never packaged (new pipeline ads).
   useEffect(() => {
     if (!campaign || imagesRegenerating.current) return;
+    if (isPersonalBrandCampaign(campaign.contentPillar, campaign.contentMode)) return;
     if (campaign.ads.length === 0) return;
     if (campaign.ads.every((ad) => ad.imageDataUrl)) return;
     if (isPipelineActive(campaign.id) || isCampaignPipelineControllerActive(campaign.id)) return;
@@ -130,23 +146,37 @@ export default function CampaignDetailPage() {
     );
   }
 
-  const isRunning = ["generating", "legal_review", "fixing", "packaging"].includes(campaign.phase);
+  const phases = isPersonalBrand ? PERSONAL_BRAND_PHASES : AD_PHASES;
+  const isRunning = isPersonalBrand
+    ? campaign.phase === "generating"
+    : ["generating", "legal_review", "fixing", "packaging"].includes(campaign.phase);
   const isReady = campaign.phase === "ready_to_post";
   const isFailed = campaign.phase === "failed";
   const legalResult = campaign.legalReviewId ? getResult(campaign.legalReviewId) : undefined;
-  const currentPhaseIndex = PHASES.findIndex((p) => p.id === campaign.phase);
+  const currentPhaseIndex =
+    campaign.phase === "posted"
+      ? phases.length - 1
+      : Math.max(
+          0,
+          phases.findIndex((p) => p.id === campaign.phase)
+        );
   const fixHistory = campaign.fixHistory ?? [];
 
   const handlePost = async (platform: SocialPlatform) => {
     setPosting(platform);
     const ad = campaign.ads.find((a) => a.platform === platform);
     const text = formatPostTextForApi(getFullPostForPlatform(campaign, platform), platform);
+    const personalBrand = isPersonalBrandCampaign(
+      campaign.contentPillar,
+      campaign.contentMode
+    );
 
     const { postToPlatform } = await import("@/lib/social/client");
     const result = await postToPlatform({
       platform,
       text,
-      imageDataUrl: ad?.imageDataUrl,
+      // Text-only LinkedIn for personal brand — omit image even if somehow present
+      imageDataUrl: personalBrand ? undefined : ad?.imageDataUrl,
       hashtags: campaign.hashtagsByPlatform?.[platform] ?? campaign.hashtags,
     });
 
@@ -161,20 +191,96 @@ export default function CampaignDetailPage() {
   };
 
   const handleExport = (platform: SocialPlatform) => {
+    const personalBrand = isPersonalBrandCampaign(
+      campaign.contentPillar,
+      campaign.contentMode
+    );
     const ad = campaign.ads.find((a) => a.platform === platform);
-    if (!ad?.imageDataUrl) return;
-
-    const link = document.createElement("a");
-    link.href = ad.imageDataUrl;
-    link.download = `advisorpilot-${campaign.contentPillar}-${platform}.png`;
-    link.click();
+    if (!personalBrand && ad?.imageDataUrl) {
+      const link = document.createElement("a");
+      link.href = ad.imageDataUrl;
+      link.download = `advisorpilot-${campaign.contentPillar}-${platform}.png`;
+      link.click();
+    }
 
     const text = getFullPostForPlatform(campaign, platform);
     const blob = new Blob([text], { type: "text/plain" });
     const textLink = document.createElement("a");
     textLink.href = URL.createObjectURL(blob);
-    textLink.download = `advisorpilot-${campaign.contentPillar}-${platform}-caption.txt`;
+    textLink.download = personalBrand
+      ? `personal-brand-linkedin-${campaign.id.slice(0, 8)}.txt`
+      : `advisorpilot-${campaign.contentPillar}-${platform}-caption.txt`;
     textLink.click();
+  };
+
+  const handleCopy = async (platform: SocialPlatform) => {
+    const text = getFullPostForPlatform(campaign, platform);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore clipboard failures
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!isPersonalBrand) return;
+    setRegenerating(true);
+    try {
+      const recentCategories = campaigns
+        .filter(
+          (c) =>
+            c.id !== campaign.id &&
+            isPersonalBrandCampaign(c.contentPillar, c.contentMode) &&
+            c.personalBrandCategory
+        )
+        .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
+        .map((c) => c.personalBrandCategory!)
+        .slice(0, 8);
+
+      const avoidedTopics = campaigns
+        .filter(
+          (c) =>
+            c.id !== campaign.id &&
+            isPersonalBrandCampaign(c.contentPillar, c.contentMode) &&
+            (c.personalBrandTopic || c.customRequest)
+        )
+        .map((c) => c.personalBrandTopic || c.customRequest || "")
+        .filter(Boolean)
+        .slice(0, 10);
+
+      const result = await fetchPersonalBrandPost({
+        topic: campaign.customRequest,
+        storyAnswers: campaign.storyAnswers,
+        recentCategories,
+        avoidedTopics,
+      });
+
+      const hashtags = result.post.match(/#[\w]+/g) ?? [];
+      updateCampaign(campaign.id, {
+        captionsByPlatform: { linkedin: result.post },
+        caption: result.post,
+        hashtags,
+        hashtagsByPlatform: { linkedin: hashtags },
+        personalBrandCategory: result.category,
+        personalBrandTopic: result.topic,
+        phase: "ready_to_post",
+        status: "approved",
+        progressMessage: "Personal brand post ready to publish!",
+        pipelineFallbackReason:
+          result.source === "template"
+            ? result.message ?? "Personal brand used template fallback."
+            : undefined,
+      });
+    } catch (error) {
+      updateCampaign(campaign.id, {
+        progressMessage:
+          error instanceof Error ? error.message : "Regeneration failed. Try again.",
+      });
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   return (
@@ -193,10 +299,20 @@ export default function CampaignDetailPage() {
               {getPillarTitle(campaign.contentPillar)}
             </h1>
             <p className="mt-1 font-mono text-sm text-secondary">
-              AdvisorPilot™ · {campaign.platforms.length} platform
-              {campaign.platforms.length === 1 ? "" : "s"} ·{" "}
-              {new Date(campaign.createdAt).toLocaleDateString()}
+              {isPersonalBrand
+                ? `Personal Brand · LinkedIn${
+                    campaign.personalBrandCategory
+                      ? ` · ${campaign.personalBrandCategory.replace(/-/g, " ")}`
+                      : ""
+                  }`
+                : `AdvisorPilot™ · ${campaign.platforms.length} platform${
+                    campaign.platforms.length === 1 ? "" : "s"
+                  }`}{" "}
+              · {new Date(campaign.createdAt).toLocaleDateString()}
             </p>
+            {isPersonalBrand && campaign.personalBrandTopic && (
+              <p className="mt-1 text-sm text-secondary">Angle: {campaign.personalBrandTopic}</p>
+            )}
           </div>
           <Badge variant="blue">{campaign.phase.replace(/_/g, " ")}</Badge>
         </div>
@@ -206,7 +322,7 @@ export default function CampaignDetailPage() {
         <div className="p-6">
           <h2 className="mb-6 text-lg font-semibold text-primary">Pipeline Progress</h2>
           <PipelineTimeline
-            phases={PHASES}
+            phases={phases}
             currentIndex={Math.max(0, currentPhaseIndex)}
             running={isRunning}
           />
@@ -221,22 +337,29 @@ export default function CampaignDetailPage() {
         </div>
       </Card>
 
-      <CreativeDirectorDashboard campaign={campaign} />
+      {!isPersonalBrand && <CreativeDirectorDashboard campaign={campaign} />}
 
       {campaign.pipelineFallbackReason && (
         <Card className="border-caution/40 bg-caution/5 p-5">
           <div className="flex gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-caution" />
             <div>
-              <p className="font-medium text-primary">Creative Director skipped — template fallback</p>
+              <p className="font-medium text-primary">
+                {isPersonalBrand
+                  ? "AI generation skipped — template fallback"
+                  : "Creative Director skipped — template fallback"}
+              </p>
               <p className="mt-1 text-sm text-secondary">
-                The AI exploration step did not run, so there is no generation cost breakdown and ads
-                were built instantly from pillar seed copy. Reason: {campaign.pipelineFallbackReason}
+                {isPersonalBrand
+                  ? `A template post was used instead of a full AI draft. Reason: ${campaign.pipelineFallbackReason}`
+                  : `The AI exploration step did not run, so there is no generation cost breakdown and ads were built instantly from pillar seed copy. Reason: ${campaign.pipelineFallbackReason}`}
               </p>
-              <p className="mt-2 text-xs text-secondary">
-                Restore the full pipeline by fixing your OpenAI API key / billing quota, then start a new
-                campaign.
-              </p>
+              {!isPersonalBrand && (
+                <p className="mt-2 text-xs text-secondary">
+                  Restore the full pipeline by fixing your OpenAI API key / billing quota, then start
+                  a new campaign.
+                </p>
+              )}
             </div>
           </div>
         </Card>
@@ -251,13 +374,17 @@ export default function CampaignDetailPage() {
               <p className="mt-1 text-sm text-secondary">
                 {campaign.progressMessage ?? "Legal review did not pass after maximum fix attempts."}
               </p>
-              {legalResult && <div className="mt-2"><RiskBadge risk={legalResult.overallRisk} /></div>}
+              {legalResult && (
+                <div className="mt-2">
+                  <RiskBadge risk={legalResult.overallRisk} />
+                </div>
+              )}
             </div>
           </div>
         </Card>
       )}
 
-      {fixHistory.length > 0 && (
+      {!isPersonalBrand && fixHistory.length > 0 && (
         <section>
           <h2 className="mb-4 text-xl font-semibold text-primary">
             Creative Fix History ({fixHistory.length})
@@ -282,7 +409,8 @@ export default function CampaignDetailPage() {
                 <ExpandableContent open={expandedFix === i}>
                   <div className="border-t border-border bg-muted/30 px-4 py-3 text-sm">
                     <p className="text-primary">
-                      <span className="font-medium">Subhead:</span> {fix.subheadBefore} → {fix.subheadAfter}
+                      <span className="font-medium">Subhead:</span> {fix.subheadBefore} →{" "}
+                      {fix.subheadAfter}
                     </p>
                     <p className="mt-2 font-mono text-xs text-secondary">
                       {fix.findings.length} finding{fix.findings.length === 1 ? "" : "s"} addressed
@@ -295,7 +423,7 @@ export default function CampaignDetailPage() {
         </section>
       )}
 
-      {legalResult && (
+      {!isPersonalBrand && legalResult && (
         <section>
           <h2 className="mb-4 text-xl font-semibold text-primary">Legal Review</h2>
           <Card className="p-5">
@@ -306,7 +434,9 @@ export default function CampaignDetailPage() {
             {legalResult.findings.length > 0 && campaign.phase !== "ready_to_post" && (
               <div className="mt-4 space-y-2">
                 {legalResult.findings.slice(0, 3).map((f: Finding) => (
-                  <p key={f.id} className="text-xs text-secondary">• {f.title}</p>
+                  <p key={f.id} className="text-xs text-secondary">
+                    • {f.title}
+                  </p>
                 ))}
               </div>
             )}
@@ -314,10 +444,12 @@ export default function CampaignDetailPage() {
         </section>
       )}
 
-      {campaign.ads.length > 0 && (
+      {!isPersonalBrand && campaign.ads.length > 0 && (
         <section>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-primary">Generated Ads ({campaign.ads.length})</h2>
+            <h2 className="text-xl font-semibold text-primary">
+              Generated Ads ({campaign.ads.length})
+            </h2>
             <p className="text-sm text-secondary">
               {renderingAds ? "Rendering previews…" : "Click any ad to preview"}
             </p>
@@ -346,7 +478,9 @@ export default function CampaignDetailPage() {
 
       {isReady && (
         <section>
-          <h2 className="mb-4 text-xl font-semibold text-primary">Post Package</h2>
+          <h2 className="mb-4 text-xl font-semibold text-primary">
+            {isPersonalBrand ? "LinkedIn Post" : "Post Package"}
+          </h2>
           <StaggerChildren className="space-y-4">
             {campaign.platforms.map((platform) => {
               const platformLabel =
@@ -367,11 +501,18 @@ export default function CampaignDetailPage() {
                       )}
                     </div>
                     <PostTextPreview text={postText} />
-                    <p className="mt-2 font-mono text-xs text-secondary">
-                      Hashtags: {hashtags.join(" ")}
-                    </p>
+                    {!isPersonalBrand && hashtags.length > 0 && (
+                      <p className="mt-2 font-mono text-xs text-secondary">
+                        Hashtags: {hashtags.join(" ")}
+                      </p>
+                    )}
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <Button size="sm" variant="gold" onClick={() => handlePost(platform)} disabled={posting !== null}>
+                      <Button
+                        size="sm"
+                        variant="gold"
+                        onClick={() => handlePost(platform)}
+                        disabled={posting !== null || regenerating}
+                      >
                         {posting === platform ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
@@ -379,9 +520,38 @@ export default function CampaignDetailPage() {
                         )}
                         Approve & Post
                       </Button>
-                      <Button size="sm" variant="secondary" onClick={() => handleExport(platform)}>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleCopy(platform)}
+                        disabled={regenerating}
+                      >
+                        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        {copied ? "Copied" : "Copy Post"}
+                      </Button>
+                      {isPersonalBrand && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void handleRegenerate()}
+                          disabled={regenerating || posting !== null}
+                        >
+                          {regenerating ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                          Regenerate
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleExport(platform)}
+                        disabled={regenerating}
+                      >
                         <Download className="h-4 w-4" />
-                        Export Package
+                        {isPersonalBrand ? "Export Text" : "Export Package"}
                       </Button>
                     </div>
                     {postResult && (
@@ -395,7 +565,7 @@ export default function CampaignDetailPage() {
         </section>
       )}
 
-      {campaign.qrUrl && isReady && (
+      {!isPersonalBrand && campaign.qrUrl && isReady && (
         <Card className="p-5">
           <p className="text-sm font-medium text-primary">Demo QR Link</p>
           <p className="mt-1 text-sm text-accent">{campaign.qrUrl}</p>

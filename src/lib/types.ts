@@ -198,10 +198,24 @@ export interface FixIteration {  iteration: number;
   subheadAfter: string;
 }
 
+export type CampaignContentMode = "ad" | "personal-brand";
+
+export type PersonalBrandCategoryId =
+  | "education"
+  | "founder-journey"
+  | "product-updates"
+  | "personal";
+
 export interface CampaignRun {
   id: string;
   brand: "AdvisorPilot";
   contentPillar: string;
+  /** ad = Creative Director social ads; personal-brand = text-only LinkedIn posts */
+  contentMode?: CampaignContentMode;
+  /** Weighted category chosen for personal-brand campaigns */
+  personalBrandCategory?: PersonalBrandCategoryId;
+  /** Short angle label returned by the personal-brand generator */
+  personalBrandTopic?: string;
   platforms: SocialPlatform[];
   phase: PipelinePhase;
   status: CampaignStatus;
@@ -241,8 +255,10 @@ export interface CampaignRun {
   layoutStyle?: import("./ad/ad-template-registry").AdLayoutStyle;
   /** Canvas background: gradient or clean white */
   canvasStyle?: import("./ad/ad-template-registry").CanvasStyle;
-  /** Freeform topic/angle when contentPillar is custom-request */
+  /** Freeform topic/angle when contentPillar is custom-request or personal-brand */
   customRequest?: string;
+  /** Future Story Builder interview answers for personal-brand */
+  storyAnswers?: string[];
   generationCost?: import("./openai/cost-tracker").GenerationCostReport;
   /** Why the run used template seeds instead of the Creative Director pipeline. */
   pipelineFallbackReason?: string;
