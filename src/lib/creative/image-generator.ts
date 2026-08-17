@@ -3,6 +3,8 @@ import { estimateOpenAIImageCostUsd } from "../openai/image-pricing";
 import { getActiveCostTracker } from "../openai/cost-tracker-server";
 import { isRetryableOpenAIError, parseResponseBody, sleep } from "../openai/http";
 import { buildMasterImagePrompt, buildNegativePrompt } from "./image-prompts";
+import { buildAdPanelImagePrompt, buildAdPanelNegativePrompt } from "./panel-image-prompt";
+import { planPanelCrop } from "./panel-geometry";
 import type { AspectRatio } from "../types";
 import type { CreativeBrief } from "./types";
 
@@ -11,9 +13,10 @@ interface ImageGenerationResponse {
   error?: { message?: string };
 }
 
+/** Only sizes the gpt-image-1 family accepts — 1024x1792 is DALL-E 3 and 400s here. */
 const ASPECT_TO_SIZE: Record<AspectRatio, string> = {
   "1:1": "1024x1024",
-  "9:16": "1024x1792",
+  "9:16": "1024x1536",
 };
 
 function getImageModel(): string {
@@ -104,6 +107,55 @@ export async function generateMasterImage(brief: CreativeBrief): Promise<string>
   const prompt = buildMasterImagePrompt(brief);
   const negativePrompt = buildNegativePrompt(brief);
   return callImagesAPI(prompt, ASPECT_TO_SIZE["1:1"], negativePrompt);
+}
+
+export interface AdPanelImageInput {
+  customRequest: string;
+  brief?: CreativeBrief;
+  aspectRatios: AspectRatio[];
+}
+
+/**
+ * Generates the graphic-panel artwork for split-ai-panel ad cards — one image
+ * per required aspect ratio. Unlike the master concept image these carry no
+ * copy, so they can be composited straight into the branded layout.
+ */
+export async function generateAdPanelImages({
+  customRequest,
+  brief,
+  aspectRatios,
+}: AdPanelImageInput): Promise<Partial<Record<AspectRatio, string>>> {
+  const topic = customRequest?.trim();
+  if (!topic) {
+    throw new Error("customRequest is required to generate an AI panel image");
+  }
+
+  const ratios = [...new Set(aspectRatios)];
+  if (!ratios.length) {
+    throw new Error("At least one aspect ratio is required for panel generation");
+  }
+
+  const negativePrompt = buildAdPanelNegativePrompt(brief);
+  const model = getImageModel();
+
+  const results = await Promise.all(
+    ratios.map(async (aspectRatio) => {
+      const crop = planPanelCrop(aspectRatio, model);
+      const prompt = buildAdPanelImagePrompt({ customRequest: topic, brief, aspectRatio, crop });
+
+      console.info(
+        `[panel-image] ${aspectRatio} slot ${crop.slot.width}x${crop.slot.height} → ` +
+          `requesting ${crop.image.size} (keeps ${Math.round(crop.visibleWidthRatio * 100)}% width, ` +
+          `${Math.round(crop.visibleHeightRatio * 100)}% height; worst case ` +
+          `${Math.round(crop.safeWidthRatio * 100)}%/${Math.round(crop.safeHeightRatio * 100)}%)`
+      );
+
+      const image = await callImagesAPI(prompt, crop.image.size, negativePrompt);
+      return [aspectRatio, image] as const;
+    })
+  );
+
+  return Object.fromEntries(results) as Partial<Record<AspectRatio, string>>;
 }
 
 export interface ImageGenerationOptions {

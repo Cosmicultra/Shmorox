@@ -3,12 +3,12 @@ import { getOpenAIConfig } from "@/lib/openai/config";
 import { deltaToReport } from "@/lib/openai/cost-tracker";
 import { withCostTracking } from "@/lib/openai/cost-tracker-server";
 import { runExplorationPhase, runPremiumRevision } from "@/lib/creative/exploration";
-import { generateAdaptedImages } from "@/lib/creative/image-generator";
+import { generateAdaptedImages, generateAdPanelImages } from "@/lib/creative/image-generator";
 import type { AspectRatio, SocialPlatform } from "@/lib/types";
 import { SOCIAL_PLATFORMS } from "@/lib/types";
 import type { CreativeBrief, CreativeDirectorInput } from "@/lib/creative/types";
 
-type CreativeStep = "exploration" | "premium_revision" | "images";
+type CreativeStep = "exploration" | "premium_revision" | "images" | "panel_image";
 
 /** @deprecated Legacy steps — kept for checkpoint resume only */
 type LegacyCreativeStep =
@@ -30,6 +30,7 @@ type StepRequest = {
   selectedConcept?: import("@/lib/creative/types").ConceptVariation;
   productionApproved?: boolean;
   legacyPipeline?: boolean;
+  customRequest?: string;
 };
 
 function getRequiredAspectRatios(platforms: SocialPlatform[]): AspectRatio[] {
@@ -114,6 +115,29 @@ export async function POST(req: NextRequest) {
           );
 
           return { masterImageUrl, adaptedImages };
+        }
+
+        case "panel_image": {
+          if (!body.customRequest?.trim()) {
+            throw new Error("customRequest is required for panel image generation");
+          }
+          if (body.strategyApproved === false || body.productionApproved === false) {
+            throw new Error(
+              "Creative Director has not approved strategic direction. Images blocked."
+            );
+          }
+
+          const aspectRatios = body.platforms?.length
+            ? getRequiredAspectRatios(body.platforms)
+            : (["1:1"] as AspectRatio[]);
+
+          const panelImages = await generateAdPanelImages({
+            customRequest: body.customRequest,
+            brief: body.brief,
+            aspectRatios,
+          });
+
+          return { panelImages };
         }
 
         default:

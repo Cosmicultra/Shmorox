@@ -122,8 +122,22 @@ function lintSafeZone(layout: AdLayoutSpec): LayoutLintIssue[] {
   ];
 }
 
+function lintAiPanel(ad: GeneratedAd, layout: AdLayoutSpec): LayoutLintIssue[] {
+  if (!AD_TEMPLATE_REGISTRY[layout.templateId].visual.aiPanel) return [];
+  if (ad.panelImageUrl) return [];
+
+  return [
+    {
+      code: "MISSING_AI_PANEL",
+      message: `Template ${layout.templateId} requires generated panel artwork, but none is attached.`,
+      severity: "error",
+    },
+  ];
+}
+
 function lintScreenshot(layout: AdLayoutSpec): LayoutLintIssue[] {
   if (layout.templateId === "text-focused") return [];
+  if (AD_TEMPLATE_REGISTRY[layout.templateId].visual.aiPanel) return [];
 
   const screen = getScreenshotForTemplate(
     layout.templateId,
@@ -306,6 +320,7 @@ export function lintAdLayout(ad: GeneratedAd): LayoutLintResult {
     ...lintLogoVsQr(content, layout),
     ...lintSafeZone(layout),
     ...lintScreenshot(layout),
+    ...lintAiPanel(ad, layout),
     ...lintStepsPlusSupporting(content, layout),
     ...lintCopyLadderViolation(content, layout),
     ...lintRightPanelUnderfilled(layout),

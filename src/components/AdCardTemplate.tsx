@@ -50,6 +50,8 @@ export interface AdCardProps {
   canvasStyle?: CanvasStyle;
   showQR?: boolean;
   qrDataUrl?: string;
+  /** AI artwork for split-ai-panel templates */
+  panelImageUrl?: string;
 }
 
 function Canvas({
@@ -170,6 +172,7 @@ function QrCta({
   if (!qrDataUrl) return null;
 
   const size = qrSize ?? (compact ? Math.round(LAYOUT.qrSize * 0.85) : LAYOUT.qrSize);
+  const primarySize = ctaFontSize ?? TYPE.cta.size;
 
   return (
     <div
@@ -195,23 +198,46 @@ function QrCta({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={qrDataUrl}
-          alt="Scan to request a demo"
+          alt="Scan to request a demo or sign up for a free trial"
           width={size}
           height={size}
           style={{ display: "block" }}
         />
       </div>
-      <span
+      <div
         style={{
-          fontSize: ctaFontSize ?? TYPE.cta.size,
-          fontWeight: TYPE.cta.weight,
-          letterSpacing: TYPE.cta.tracking,
-          color: T.navy,
-          lineHeight: TYPE.cta.lineHeight,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          gap: 4,
+          minWidth: 0,
+          maxWidth: centered ? 440 : compact ? 280 : 360,
+          textAlign: "left",
         }}
       >
-        {cta}
-      </span>
+        <span
+          style={{
+            fontSize: primarySize,
+            fontWeight: TYPE.cta.weight,
+            letterSpacing: TYPE.cta.tracking,
+            color: T.navy,
+            lineHeight: TYPE.cta.lineHeight,
+          }}
+        >
+          {cta}
+        </span>
+        <span
+          style={{
+            fontSize: Math.round(primarySize * 0.8),
+            fontWeight: 500,
+            letterSpacing: TYPE.cta.tracking,
+            color: T.navy,
+            lineHeight: 1.25,
+          }}
+        >
+          {ADVISORPILOT_KNOWLEDGE.adCardTrialCta}
+        </span>
+      </div>
     </div>
   );
 }
@@ -840,6 +866,7 @@ function SplitLayoutCard({
   templateId,
   platform,
   canvasStyle = "gradient",
+  panelImageUrl,
 }: {
   headline: string;
   subhead: string;
@@ -851,6 +878,7 @@ function SplitLayoutCard({
   templateId: AdTemplateId;
   platform?: SocialPlatform;
   canvasStyle?: CanvasStyle;
+  panelImageUrl?: string;
 }) {
   const headline = formatAdCardDisplayCopy(h);
   const subhead = formatAdCardDisplayCopy(s);
@@ -928,6 +956,7 @@ function SplitLayoutCard({
             templateId={templateId}
             pillarId={contentPillarId}
             variant="square"
+            panelImageUrl={panelImageUrl}
           />
         </div>
 
@@ -1168,11 +1197,16 @@ function DiagonalGrowthCard({
   );
 }
 
-function isSplitGraphicRenderable(templateId: AdTemplateId, pillarId?: string): boolean {
+function isSplitGraphicRenderable(
+  templateId: AdTemplateId,
+  pillarId?: string,
+  panelImageUrl?: string
+): boolean {
   const template = AD_TEMPLATE_REGISTRY[templateId];
   if (template.visual.mode === "text-only" || templateId === "text-focused") {
     return false;
   }
+  if (template.visual.aiPanel) return Boolean(panelImageUrl);
   if (templateId === "split-dashboard") return true;
   return Boolean(getScreenshotForTemplate(templateId, pillarId, "1:1"));
 }
@@ -1189,6 +1223,7 @@ function SquareCard({
   platform,
   canvasStyle,
   qrDataUrl,
+  panelImageUrl,
 }: AdCardProps) {
   const variant = (layoutVariant as LayoutVariant) ?? "split-office";
   const templateId = propTemplateId ?? getTemplateIdForPillar(contentPillarId);
@@ -1197,7 +1232,7 @@ function SquareCard({
   const isTextOnly =
     layoutStyle === "text-only" || templateId === "text-focused";
 
-  if (isTextOnly || !isSplitGraphicRenderable(templateId, contentPillarId)) {
+  if (isTextOnly || !isSplitGraphicRenderable(templateId, contentPillarId, panelImageUrl)) {
     return (
       <TextOnlyLayoutCard
         headline={headline}
@@ -1241,6 +1276,7 @@ function SquareCard({
       templateId={templateId}
       platform={platform}
       canvasStyle={resolvedCanvasStyle}
+      panelImageUrl={panelImageUrl}
     />
   );
 }
@@ -1257,6 +1293,7 @@ function VerticalCard({
   platform,
   canvasStyle,
   qrDataUrl,
+  panelImageUrl,
 }: Omit<AdCardProps, "aspectRatio" | "showQR">) {
   const headline = formatAdCardDisplayCopy(h);
   const subhead = formatAdCardDisplayCopy(s);
@@ -1268,7 +1305,9 @@ function VerticalCard({
   const proofType = getEffectiveProofType(templateDef.copySchema.proofType, contentPillarId);
   const resolvedCanvasStyle = canvasStyle ?? templateDef.canvasStyle;
   const isTextOnly =
-    layoutStyle === "text-only" || templateId === "text-focused";
+    layoutStyle === "text-only" ||
+    templateId === "text-focused" ||
+    (templateDef.visual.aiPanel === true && !panelImageUrl);
   const layoutModes = resolveCardLayoutModes(
     headline,
     subhead,
@@ -1353,6 +1392,7 @@ function VerticalCard({
               templateId={templateId}
               pillarId={contentPillarId}
               variant="vertical"
+              panelImageUrl={panelImageUrl}
             />
           </div>
         )}

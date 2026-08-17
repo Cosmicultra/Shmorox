@@ -3,15 +3,138 @@
  * @see https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/images-api
  */
 
-export const LINKEDIN_API_VERSION = "202502";
+/**
+ * LinkedIn sunsets each monthly version roughly a year after release, so any pinned
+ * value eventually starts returning 426 NONEXISTENT_VERSION. Set LINKEDIN_API_VERSION
+ * to pin explicitly; otherwise a rejected version is renegotiated at runtime.
+ * @see https://learn.microsoft.com/en-us/linkedin/marketing/versioning
+ */
+export const LINKEDIN_API_VERSION = "202607";
 
-export function linkedInApiHeaders(accessToken: string): Record<string, string> {
+const VERSION_PATTERN = /^\d{6}(\.\d{2})?$/;
+
+let negotiatedVersion: string | null = null;
+
+function pinnedApiVersion(): string | null {
+  const raw = process.env.LINKEDIN_API_VERSION?.trim();
+  return raw && VERSION_PATTERN.test(raw) ? raw : null;
+}
+
+export function linkedInApiVersion(): string {
+  return pinnedApiVersion() ?? negotiatedVersion ?? LINKEDIN_API_VERSION;
+}
+
+/** Months to fall back through, newest first. Skips the current month, which may not be published yet. */
+function versionCandidates(exclude: string): string[] {
+  const now = new Date();
+  const candidates: string[] = [];
+  for (let monthsBack = 1; monthsBack <= 11; monthsBack++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack, 1));
+    const version = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    if (version !== exclude) candidates.push(version);
+  }
+  return candidates;
+}
+
+function isSunsetVersionError(status: number, body: string): boolean {
+  return status === 426 && body.includes("NONEXISTENT_VERSION");
+}
+
+export function linkedInApiHeaders(
+  accessToken: string,
+  version: string = linkedInApiVersion()
+): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
-    "LinkedIn-Version": LINKEDIN_API_VERSION,
+    "LinkedIn-Version": version,
     "X-Restli-Protocol-Version": "2.0.0",
   };
+}
+
+export type LinkedInRestResult = {
+  ok: boolean;
+  status: number;
+  headers: Headers;
+  text: string;
+  version: string;
+};
+
+/** Call a /rest/ endpoint, retrying with older API versions if the current one has been sunset. */
+export async function linkedInRestFetch(
+  label: string,
+  url: string,
+  options: { accessToken: string; method?: string; body?: unknown }
+): Promise<LinkedInRestResult> {
+  const { accessToken, method = "POST", body } = options;
+  const startingVersion = linkedInApiVersion();
+
+  // An explicit env pin is an operator decision, so don't silently substitute another version.
+  const attempts = pinnedApiVersion()
+    ? [startingVersion]
+    : [startingVersion, ...versionCandidates(startingVersion)];
+
+  let last: LinkedInRestResult | undefined;
+
+  for (const version of attempts) {
+    const res = await fetchWithRetry(label, url, {
+      method,
+      headers: linkedInApiHeaders(accessToken, version),
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    last = { ok: res.ok, status: res.status, headers: res.headers, text, version };
+
+    if (!isSunsetVersionError(res.status, text)) {
+      if (version !== startingVersion && negotiatedVersion !== version) {
+        negotiatedVersion = version;
+        console.warn(
+          `[linkedin] API version ${startingVersion} is sunset; using ${version}. ` +
+            `Update LINKEDIN_API_VERSION in linkedin-media.ts or set the LINKEDIN_API_VERSION env var.`
+        );
+      }
+      return last;
+    }
+
+    console.warn(`[linkedin/${label}] version ${version} rejected (426 NONEXISTENT_VERSION)`);
+  }
+
+  return last!;
+}
+
+/** Undici hides the real network error (ECONNRESET, ENOTFOUND, …) behind "fetch failed" in err.cause. */
+export function describeFetchError(err: unknown): string {
+  if (!(err instanceof Error)) return "Unknown error";
+  const cause = err.cause;
+  if (cause instanceof Error) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    return code ? `${err.message} (${code}: ${cause.message})` : `${err.message} (${cause.message})`;
+  }
+  return err.message;
+}
+
+/** Retry transient network-level failures (undici "fetch failed"); HTTP error statuses are returned, not retried. */
+async function fetchWithRetry(
+  label: string,
+  input: string,
+  init: RequestInit,
+  attempts = 3
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(input, init);
+    } catch (err) {
+      lastError = err;
+      if (attempt < attempts) {
+        console.warn(
+          `[linkedin/media] ${label} network error (attempt ${attempt}/${attempts}), retrying: ${describeFetchError(err)}`
+        );
+        await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
+    }
+  }
+  throw new Error(`${label} network error after ${attempts} attempts: ${describeFetchError(lastError)}`);
 }
 
 async function loadImageBytes(
@@ -36,7 +159,7 @@ async function loadImageBytes(
   }
 
   if (imageDataUrl.startsWith("http://") || imageDataUrl.startsWith("https://")) {
-    const res = await fetch(imageDataUrl);
+    const res = await fetchWithRetry("image download", imageDataUrl, {});
     if (!res.ok) {
       throw new Error(`Failed to download image (${res.status})`);
     }
@@ -64,26 +187,29 @@ export async function uploadLinkedInImage(options: {
   const { accessToken, ownerUrn, imageDataUrl } = options;
   const { bytes } = await loadImageBytes(imageDataUrl);
 
-  const registerRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
-    method: "POST",
-    headers: linkedInApiHeaders(accessToken),
-    body: JSON.stringify({
-      initializeUploadRequest: {
-        owner: ownerUrn,
+  const register = await linkedInRestFetch(
+    "image register",
+    "https://api.linkedin.com/rest/images?action=initializeUpload",
+    {
+      accessToken,
+      method: "POST",
+      body: {
+        initializeUploadRequest: {
+          owner: ownerUrn,
+        },
       },
-    }),
-  });
+    }
+  );
 
-  const registerText = await registerRes.text();
-  if (!registerRes.ok) {
-    throw new Error(`LinkedIn image register failed (${registerRes.status}): ${registerText}`);
+  if (!register.ok) {
+    throw new Error(`LinkedIn image register failed (${register.status}): ${register.text}`);
   }
 
   let registerJson: InitializeUploadResponse;
   try {
-    registerJson = JSON.parse(registerText) as InitializeUploadResponse;
+    registerJson = JSON.parse(register.text) as InitializeUploadResponse;
   } catch {
-    throw new Error(`LinkedIn image register returned non-JSON: ${registerText.slice(0, 200)}`);
+    throw new Error(`LinkedIn image register returned non-JSON: ${register.text.slice(0, 200)}`);
   }
 
   const imageUrn = registerJson.value?.image;
@@ -94,7 +220,7 @@ export async function uploadLinkedInImage(options: {
   }
 
   // Pre-signed upload URL — do not send Authorization (LinkedIn rejects it).
-  const uploadRes = await fetch(uploadUrl, {
+  const uploadRes = await fetchWithRetry("image bytes upload", uploadUrl, {
     method: "PUT",
     headers: {
       "Content-Type": "application/octet-stream",

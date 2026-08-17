@@ -365,6 +365,8 @@ export interface CreativePipelineCheckpoint {
   selectionRationale?: string;
   masterImageUrl?: string;
   adaptedImages?: Partial<Record<AspectRatio, string>>;
+  /** AI graphic-panel artwork for split-ai-panel templates, keyed by aspect ratio */
+  panelImages?: Partial<Record<AspectRatio, string>>;
   imagesBlocked?: boolean;
   creativeJob?: CreativeJob;
   generationCost?: import("../openai/cost-tracker").GenerationCostReport;

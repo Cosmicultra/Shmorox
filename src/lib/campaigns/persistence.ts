@@ -3,6 +3,7 @@ import type { AspectRatio, CampaignRun, GeneratedAd } from "@/lib/types";
 import {
   adCreativeImagePath,
   adImagePath,
+  adPanelImagePath,
   adaptedImagePath,
   masterImagePath,
 } from "@/lib/campaigns/campaign-assets";
@@ -79,6 +80,13 @@ export async function uploadCampaignImages(
         adCreativeImagePath(userId, campaign.id, ad.id)
       );
     }
+    if (isDataUrl(ad.panelImageUrl)) {
+      await uploadIfDataUrl(
+        supabase,
+        ad.panelImageUrl,
+        adPanelImagePath(userId, campaign.id, ad.id)
+      );
+    }
   }
 }
 
@@ -88,7 +96,19 @@ async function hydrateAdImages(
   campaignId: string,
   ad: GeneratedAd
 ): Promise<GeneratedAd> {
-  if (ad.imageDataUrl) return ad;
+  // Panel artwork is an input to re-rendering, so restore it even when the
+  // finished card is already inline.
+  let panelImageUrl = ad.panelImageUrl;
+  if (!panelImageUrl) {
+    panelImageUrl = await downloadAsDataUrl(
+      supabase,
+      adPanelImagePath(userId, campaignId, ad.id)
+    );
+  }
+
+  if (ad.imageDataUrl) {
+    return { ...ad, ...(panelImageUrl ? { panelImageUrl } : {}) };
+  }
 
   const imageDataUrl = await downloadAsDataUrl(
     supabase,
@@ -108,6 +128,7 @@ async function hydrateAdImages(
     ...ad,
     ...(imageDataUrl ? { imageDataUrl } : {}),
     ...(creativeAssetUrl ? { creativeAssetUrl } : {}),
+    ...(panelImageUrl ? { panelImageUrl } : {}),
   };
 }
 

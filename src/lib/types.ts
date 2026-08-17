@@ -169,6 +169,8 @@ export interface GeneratedAd {
   disclaimer: string;
   /** Raw AI creative output before marketing packaging */
   creativeAssetUrl?: string;
+  /** AI artwork composited into the graphic panel of split-ai-panel cards */
+  panelImageUrl?: string;
   /** Final marketing-ready asset with logo, disclaimer, QR */
   imageDataUrl?: string;
   /** Layout version used when imageDataUrl was last rendered — frozen for finalized ads */
@@ -244,6 +246,8 @@ export interface CampaignRun {
   imagesBlocked?: boolean;
   creativePipelineStep?: import("./creative/types").CreativePipelineStep;
   adaptedImages?: Partial<Record<AspectRatio, string>>;
+  /** AI graphic-panel artwork for split-ai-panel templates, keyed by aspect ratio */
+  panelImages?: Partial<Record<AspectRatio, string>>;
   selectionRationale?: string;
   createdAt: string;
   completedAt?: string;

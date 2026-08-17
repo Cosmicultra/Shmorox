@@ -17,10 +17,21 @@ export function stripCampaignImages(campaign: CampaignRun): CampaignRun {
           ])
         )
       : campaign.adaptedImages,
+    // Panel artwork is persisted per-ad in Storage; the campaign-level map is
+    // only a generation checkpoint and must not bloat the Postgres row.
+    panelImages: campaign.panelImages
+      ? Object.fromEntries(
+          Object.entries(campaign.panelImages).map(([k, v]) => [
+            k,
+            isDataUrl(v) ? undefined : v,
+          ])
+        )
+      : campaign.panelImages,
     ads: campaign.ads.map((ad) => ({
       ...ad,
       imageDataUrl: isDataUrl(ad.imageDataUrl) ? undefined : ad.imageDataUrl,
       creativeAssetUrl: isDataUrl(ad.creativeAssetUrl) ? undefined : ad.creativeAssetUrl,
+      panelImageUrl: isDataUrl(ad.panelImageUrl) ? undefined : ad.panelImageUrl,
     })),
   };
 }

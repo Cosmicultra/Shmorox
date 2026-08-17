@@ -5,7 +5,7 @@ import { AdCardTemplate } from "@/components/AdCardTemplate";
 import type { GeneratedAd } from "@/lib/types";
 import { buildDemoUrl } from "@/lib/knowledge/advisorpilot";
 import { enrichGeneratedAd } from "./ad-creative-content";
-import { AD_CARD_LAYOUT_VERSION } from "./ad-card-layout-version";
+import { AD_CARD_LAYOUT_VERSION, adHasCurrentLayout } from "./ad-card-layout-version";
 import { ASSET_PACK_VERSION } from "./asset-pack";
 import {
   getCachedAdImage,
@@ -162,6 +162,10 @@ export async function renderAdToImage(
 
   await prepareAdRenderEnvironment();
 
+  if (enriched.panelImageUrl) {
+    await preloadImage(enriched.panelImageUrl);
+  }
+
   const container = document.createElement("div");
   container.style.position = "fixed";
   container.style.left = "-9999px";
@@ -188,6 +192,7 @@ export async function renderAdToImage(
       templateId: enriched.templateId,
       platform: enriched.platform,
       canvasStyle: enriched.canvasStyle,
+      panelImageUrl: enriched.panelImageUrl,
       qrDataUrl,
     })
   );
@@ -228,16 +233,7 @@ async function renderSingleAd(
   const { campaignId, force = false } = options ?? {};
   const enriched = enrichGeneratedAd(ad);
 
-  if (!force && enriched.imageDataUrl) {
-    return enriched;
-  }
-
-  if (
-    !force &&
-    enriched.renderedLayoutVersion === AD_CARD_LAYOUT_VERSION &&
-    enriched.contentHash &&
-    enriched.imageDataUrl
-  ) {
+  if (!force && adHasCurrentLayout(enriched)) {
     return enriched;
   }
 

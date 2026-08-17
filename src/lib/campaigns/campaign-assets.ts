@@ -5,7 +5,8 @@ export type CampaignAssetUpload =
   | { type: "master"; dataUrl: string }
   | { type: "adapted"; aspect: AspectRatio; dataUrl: string }
   | { type: "ad"; adId: string; dataUrl: string }
-  | { type: "ad-creative"; adId: string; dataUrl: string };
+  | { type: "ad-creative"; adId: string; dataUrl: string }
+  | { type: "ad-panel"; adId: string; dataUrl: string };
 
 export function adImagePath(userId: string, campaignId: string, adId: string): string {
   return `${userId}/${campaignId}/ads/${adId}.png`;
@@ -24,6 +25,10 @@ export function adCreativeImagePath(userId: string, campaignId: string, adId: st
   return `${userId}/${campaignId}/ads/${adId}-creative.png`;
 }
 
+export function adPanelImagePath(userId: string, campaignId: string, adId: string): string {
+  return `${userId}/${campaignId}/ads/${adId}-panel.png`;
+}
+
 export function assetStoragePath(
   userId: string,
   campaignId: string,
@@ -38,6 +43,8 @@ export function assetStoragePath(
       return adImagePath(userId, campaignId, asset.adId);
     case "ad-creative":
       return adCreativeImagePath(userId, campaignId, asset.adId);
+    case "ad-panel":
+      return adPanelImagePath(userId, campaignId, asset.adId);
   }
 }
 
@@ -63,6 +70,9 @@ export function collectCampaignImageAssets(campaign: CampaignRun): CampaignAsset
     }
     if (isDataUrl(ad.creativeAssetUrl)) {
       assets.push({ type: "ad-creative", adId: ad.id, dataUrl: ad.creativeAssetUrl });
+    }
+    if (isDataUrl(ad.panelImageUrl)) {
+      assets.push({ type: "ad-panel", adId: ad.id, dataUrl: ad.panelImageUrl });
     }
   }
 

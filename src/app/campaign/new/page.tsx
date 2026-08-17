@@ -316,8 +316,14 @@ export default function NewCampaignPage() {
                         [
                           {
                             id: "split-graphic" as const,
-                            title: "Split with product graphic",
-                            description: "Copy on the left, lifestyle photo and UI on the right.",
+                            title:
+                              contentPillar === CUSTOM_REQUEST_PILLAR_ID
+                                ? "Split with generated graphic"
+                                : "Split with product graphic",
+                            description:
+                              contentPillar === CUSTOM_REQUEST_PILLAR_ID
+                                ? "Copy on the left, artwork generated from your request on the right."
+                                : "Copy on the left, lifestyle photo and UI on the right.",
                           },
                           {
                             id: "text-only" as const,

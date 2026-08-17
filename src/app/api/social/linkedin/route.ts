@@ -8,8 +8,9 @@ import {
   writeLinkedInCredentials,
 } from "@/lib/social/linkedin-credentials";
 import {
+  describeFetchError,
   escapeLinkedInCommentary,
-  linkedInApiHeaders,
+  linkedInRestFetch,
   uploadLinkedInImage,
 } from "@/lib/social/linkedin-media";
 
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
           imageDataUrl,
         });
       } catch (uploadErr) {
-        const msg = uploadErr instanceof Error ? uploadErr.message : "Unknown error";
+        const msg = describeFetchError(uploadErr);
         console.error("[linkedin/post] image upload failed", {
           authorUrn,
           postAs: credentials.postAs,
@@ -169,23 +170,23 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    const res = await fetch("https://api.linkedin.com/rest/posts", {
+    const res = await linkedInRestFetch("post", "https://api.linkedin.com/rest/posts", {
+      accessToken: credentials.accessToken,
       method: "POST",
-      headers: linkedInApiHeaders(credentials.accessToken),
-      body: JSON.stringify(payload),
+      body: payload,
     });
 
     if (!res.ok) {
-      const err = await res.text();
       console.error("[linkedin/post] rest/posts failed", {
         status: res.status,
         authorUrn,
         postAs: credentials.postAs,
         hasImage,
-        error: err.slice(0, 800),
+        apiVersion: res.version,
+        error: res.text.slice(0, 800),
       });
       return NextResponse.json(
-        { success: false, message: `LinkedIn API error (${res.status}): ${err}` },
+        { success: false, message: `LinkedIn API error (${res.status}): ${res.text}` },
         { status: 502 }
       );
     }
@@ -201,8 +202,10 @@ export async function POST(req: NextRequest) {
       author: authorUrn,
     });
   } catch (err) {
+    const msg = describeFetchError(err);
+    console.error("[linkedin/post] failed", { authorUrn, postAs: credentials.postAs, hasImage, error: msg.slice(0, 800) });
     return NextResponse.json(
-      { success: false, message: `LinkedIn posting failed: ${err instanceof Error ? err.message : "Unknown error"}` },
+      { success: false, message: `LinkedIn posting failed: ${msg}` },
       { status: 500 }
     );
   }

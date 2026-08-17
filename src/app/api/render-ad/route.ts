@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import type { GeneratedAd } from "@/lib/types";
 import { enrichGeneratedAd } from "@/lib/ad/ad-creative-content";
+import {
+  deleteRenderPayload,
+  putRenderPayload,
+  takeRenderPayload,
+} from "@/lib/ad/render-payload-store";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,15 +22,12 @@ async function renderWithPlaywright(
   includeQR: boolean,
   qrUrl?: string
 ): Promise<Buffer | null> {
+  const token = putRenderPayload({ ad, includeQR, qrUrl });
+
   try {
     const { chromium } = await import("playwright");
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const adParam = encodeURIComponent(JSON.stringify(ad));
-    const query = new URLSearchParams({
-      ad: adParam,
-      includeQR: String(includeQR),
-    });
-    if (qrUrl) query.set("qrUrl", qrUrl);
+    const query = new URLSearchParams({ payload: token });
 
     const browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({
@@ -47,7 +49,24 @@ async function renderWithPlaywright(
   } catch (error) {
     console.warn("[render-ad] Playwright unavailable or failed:", error);
     return null;
+  } finally {
+    deleteRenderPayload(token);
   }
+}
+
+/** Payload handoff for the Playwright render page — keeps large artwork out of the URL. */
+export async function GET(request: Request) {
+  const token = new URL(request.url).searchParams.get("payload");
+  if (!token) {
+    return NextResponse.json({ error: "Missing payload token" }, { status: 400 });
+  }
+
+  const payload = takeRenderPayload(token);
+  if (!payload) {
+    return NextResponse.json({ error: "Payload expired or not found" }, { status: 404 });
+  }
+
+  return NextResponse.json(payload);
 }
 
 export async function POST(request: Request) {

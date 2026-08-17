@@ -34,8 +34,18 @@ export const LAYOUT = {
   footerHeight: 8,
   /** Full-width copy for text-only layout */
   textOnlyCopyMax: 920,
-  /** Right visual column width (square canvas minus copy column) */
+  /** @deprecated Nominal only — the rendered graphic column is aiPanelSquare.width */
   visualPanelWidth: 480,
+  /**
+   * Rendered graphic-panel slots. Drives AI panel sizing and the crop guidance
+   * in the image prompt, so these must track the grid in AdCardTemplate.
+   * Square: 1080 - 40 - 40 padding - 600 copy column - 24 gap + 16 bleed = 392
+   * wide; 1080 - 40 top pad - 8 footer - ~62 legal row = 970 tall.
+   * Vertical: 1080 - 2x48 padding = 984 wide; the minmax(520, 1fr) row flexes
+   * with copy length, so height is a range around a mid nominal.
+   */
+  aiPanelSquare: { width: 392, height: 970 },
+  aiPanelVertical: { width: 984, height: 700, minHeight: 520, maxHeight: 850 },
 } as const;
 
 export const TYPE = {

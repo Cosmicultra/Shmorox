@@ -44,6 +44,7 @@ import { enrichGeneratedAd, tokenizeForOverlap } from "./ad-creative-content";
 import { resolveWhatWeDoCopy } from "./product-clarity";
 import { getStepsForPillar } from "./visual-config";
 import { getTemplateForPillar } from "./ad-template-registry";
+import { AdPanelImageError, isAdPanelImageError } from "./panel-image-error";
 import { generateAdsFromTemplates } from "./template-generator";
 import { SOCIAL_PLATFORMS } from "../types";
 
@@ -70,6 +71,7 @@ export interface GenerateAdsResult {
   selectedConcept?: ConceptVariation;
   masterImageUrl?: string;
   adaptedImages?: Partial<Record<AspectRatio, string>>;
+  panelImages?: Partial<Record<AspectRatio, string>>;
   imagesBlocked?: boolean;
   creativeJob?: CreativeJob;
   creativePipelineStep?: CreativePipelineStep;
@@ -169,12 +171,19 @@ function normalizeBriefForTemplate(contentPillarId: string, brief: CreativeBrief
   };
 }
 
+function usesAiPanelForInput(input: AdGenerationInput): boolean {
+  const layoutStyle = input.layoutStyle ?? "split-graphic";
+  return getTemplateForPillar(input.contentPillarId, layoutStyle).visual.aiPanel === true;
+}
+
 function buildAdsFromBrief(
   contentPillarId: string,
   platforms: AdGenerationInput["platforms"],
   brief: CreativeBrief,
   adaptedImages: Partial<Record<AspectRatio, string>>,
-  options?: Pick<AdGenerationInput, "layoutStyle" | "canvasStyle">
+  options?: Pick<AdGenerationInput, "layoutStyle" | "canvasStyle"> & {
+    panelImages?: Partial<Record<AspectRatio, string>>;
+  }
 ): GeneratedAd[] {
   const layoutStyle = options?.layoutStyle ?? "split-graphic";
   const template = getTemplateForPillar(contentPillarId, layoutStyle);
@@ -219,6 +228,7 @@ function buildAdsFromBrief(
           cta,
           disclaimer: sanitizeNoEmDash(ADVISORPILOT_KNOWLEDGE.standardDisclaimer),
           creativeAssetUrl: adaptedImages[aspectRatio],
+          panelImageUrl: options?.panelImages?.[aspectRatio],
           width: dims.width,
           height: dims.height,
         })
@@ -249,9 +259,11 @@ export async function generateAds(
   let resumeStep = normalizeResumeStep(checkpoint?.step ?? "pending");
 
   const gateApproved = checkpoint?.variationGateHistory?.at(-1)?.result.approved;
-  const hasCreativeAssets =
-    Boolean(checkpoint?.masterImageUrl) ||
-    Object.keys(checkpoint?.adaptedImages ?? {}).length > 0;
+  const aiPanelMode = usesAiPanelForInput(input);
+  const hasCreativeAssets = aiPanelMode
+    ? Object.keys(checkpoint?.panelImages ?? {}).length > 0
+    : Boolean(checkpoint?.masterImageUrl) ||
+      Object.keys(checkpoint?.adaptedImages ?? {}).length > 0;
 
   if (checkpoint && explorationAlreadyComplete(checkpoint) && resumeStep === "exploration") {
     resumeStep = hasCreativeAssets
@@ -271,14 +283,16 @@ export async function generateAds(
     resumeStep = "images";
   }
 
-  if (resumeStep === "complete" && checkpoint?.selectedConcept) {
+  if (resumeStep === "complete" && checkpoint?.selectedConcept && !(aiPanelMode && !hasCreativeAssets)) {
     const winner = checkpoint.selectedConcept;
     const adaptedImages = checkpoint.adaptedImages ?? {};
+    const panelImages = checkpoint.panelImages ?? {};
     onProgress?.("Finalizing ads from completed creative pipeline…");
     return {
       ads: buildAdsFromBrief(input.contentPillarId, input.platforms, winner.brief, adaptedImages, {
         layoutStyle: input.layoutStyle,
         canvasStyle: input.canvasStyle,
+        panelImages,
       }),
       creativeBrief: checkpoint.creativeBrief,
       originalBrief: checkpoint.originalBrief,
@@ -292,6 +306,7 @@ export async function generateAds(
       selectedConcept: winner,
       masterImageUrl: checkpoint.masterImageUrl,
       adaptedImages,
+      panelImages,
       imagesBlocked: checkpoint.imagesBlocked,
       creativeJob: checkpoint.creativeJob,
       creativePipelineStep: "complete",
@@ -331,6 +346,7 @@ export async function generateAds(
       (gateResultApproved ?? state.imagesBlocked === false);
     let winner = state.selectedConcept;
     let adaptedImages = state.adaptedImages ?? {};
+    let panelImages = state.panelImages ?? {};
     let masterImageUrl = state.masterImageUrl;
     let imagesBlocked = state.imagesBlocked;
     let generationCost = state.generationCost ?? emptyCostReport();
@@ -418,6 +434,7 @@ export async function generateAds(
           ads: buildAdsFromBrief(input.contentPillarId, input.platforms, winner!.brief, {}, {
             layoutStyle: input.layoutStyle,
             canvasStyle: input.canvasStyle,
+            panelImages: {},
           }),
           creativeBrief: strategyBrief,
           originalBrief,
@@ -456,7 +473,45 @@ export async function generateAds(
       saveCheckpoint(state, onCheckpoint);
     }
 
-    if (!isStepComplete(resumeStep, "images")) {
+    const hasExistingPanels = Object.keys(panelImages).length > 0;
+
+    if (aiPanelMode && (!isStepComplete(resumeStep, "images") || !hasExistingPanels)) {
+      if (hasExistingPanels) {
+        onProgress?.("Using AI graphic panel from checkpoint…");
+      } else {
+        onProgress?.("Phase 3 — generating AI graphic panel from your request…");
+        try {
+          const panelResult = await runCreativeStep<{
+            panelImages: Partial<Record<AspectRatio, string>>;
+          }>("panel_image", {
+            brief: winner?.brief,
+            customRequest: input.customRequest,
+            platforms: input.platforms,
+            strategyApproved: productionApproved,
+            productionApproved,
+          });
+
+          generationCost = accumulateCost(generationCost, panelResult.costDelta);
+          panelImages = panelResult.panelImages ?? {};
+        } catch (err) {
+          throw new AdPanelImageError(
+            err instanceof Error ? err.message : "Panel image generation failed"
+          );
+        }
+
+        if (!Object.keys(panelImages).length) {
+          throw new AdPanelImageError("Image API returned no panel artwork");
+        }
+      }
+
+      imagesBlocked = false;
+      state.step = "complete";
+      state.panelImages = panelImages;
+      state.imagesBlocked = false;
+      state.creativeJob = job;
+      state.generationCost = generationCost;
+      saveCheckpoint(state, onCheckpoint);
+    } else if (!isStepComplete(resumeStep, "images")) {
       if (!winner) throw new Error("Missing selected concept for image generation");
 
       const hasExistingImages =
@@ -516,13 +571,20 @@ export async function generateAds(
       saveCheckpoint(state, onCheckpoint);
     } else if (resumeStep === "complete" && winner) {
       adaptedImages = state.adaptedImages ?? {};
+      panelImages = state.panelImages ?? {};
       masterImageUrl = state.masterImageUrl;
       imagesBlocked = state.imagesBlocked;
     }
 
     if (!winner) throw new Error("Creative pipeline completed without a selected concept");
 
-    const hasCreativeAssets = Boolean(masterImageUrl || Object.keys(adaptedImages).length > 0);
+    if (aiPanelMode && !Object.keys(panelImages).length) {
+      throw new AdPanelImageError("No panel artwork available for this campaign");
+    }
+
+    const hasCreativeAssets = aiPanelMode
+      ? Object.keys(panelImages).length > 0
+      : Boolean(masterImageUrl || Object.keys(adaptedImages).length > 0);
     job = hasCreativeAssets && !imagesBlocked
       ? completeJob(job)
       : setJobStatus(job, "packaging");
@@ -531,6 +593,7 @@ export async function generateAds(
     const ads = buildAdsFromBrief(input.contentPillarId, input.platforms, winner.brief, adaptedImages, {
       layoutStyle: input.layoutStyle,
       canvasStyle: input.canvasStyle,
+      panelImages,
     });
     const finalCost = applyApprovedAssetCost(generationCost, ads.length);
 
@@ -548,6 +611,7 @@ export async function generateAds(
       selectedConcept: winner,
       masterImageUrl,
       adaptedImages,
+      panelImages,
       imagesBlocked,
       creativeJob: job,
       creativePipelineStep: imagesBlocked && !hasCreativeAssets ? "images" : "complete",
@@ -556,6 +620,14 @@ export async function generateAds(
     };
   } catch (error) {
     saveCheckpoint(state, onCheckpoint);
+
+    // The AI panel is the whole point of a split-ai-panel card — a template
+    // fallback would silently ship the wrong creative, so fail the campaign.
+    if (isAdPanelImageError(error)) {
+      console.error("AI panel generation error:", error);
+      throw error;
+    }
+
     const fallbackReason =
       error instanceof Error ? error.message : "Creative Director pipeline failed";
     onProgress?.(

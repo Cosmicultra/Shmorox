@@ -14,6 +14,8 @@ interface AssetCompositorProps {
   templateId: AdTemplateId;
   pillarId?: string;
   variant: "square" | "vertical";
+  /** AI artwork for split-ai-panel templates — fills the whole graphic panel */
+  panelImageUrl?: string;
 }
 
 function RadiatingLines({ originX = 50, opacity = 0.35 }: { originX?: number; opacity?: number }) {
@@ -371,6 +373,32 @@ function PhotoBackground({
   );
 }
 
+/**
+ * Fills the graphic slot edge to edge with generated artwork. The crop origin
+ * is centered to match the safe area reserved in the panel image prompt.
+ */
+function AiPanelImage({ src }: { src: string }) {
+  return (
+    <>
+      <div style={{ position: "absolute", inset: 0, background: SURFACE.officeWarm }} />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "block",
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: "center",
+        }}
+      />
+    </>
+  );
+}
+
 function ScreenInset({
   templateId,
   pillarId,
@@ -393,13 +421,19 @@ function ScreenInset({
   );
 }
 
-export function AssetCompositor({ templateId, pillarId, variant }: AssetCompositorProps) {
+export function AssetCompositor({
+  templateId,
+  pillarId,
+  variant,
+  panelImageUrl,
+}: AssetCompositorProps) {
   const template = AD_TEMPLATE_REGISTRY[templateId];
   if (template.visual.mode === "text-only") return null;
 
   const aspectRatio = variant === "vertical" ? "9:16" : "1:1";
   const bgSpec = getBackgroundLayer(templateId, aspectRatio);
   const isDashboardHero = templateId === "split-dashboard";
+  const isAiPanel = Boolean(template.visual.aiPanel && panelImageUrl);
 
   const panelStyle: CSSProperties = {
     position: "relative",
@@ -411,7 +445,9 @@ export function AssetCompositor({ templateId, pillarId, variant }: AssetComposit
 
   return (
     <div style={panelStyle}>
-      {isDashboardHero ? (
+      {isAiPanel ? (
+        <AiPanelImage src={panelImageUrl!} />
+      ) : isDashboardHero ? (
         <DashboardHeroPanel pillarId={pillarId} variant={variant} />
       ) : (
         <>

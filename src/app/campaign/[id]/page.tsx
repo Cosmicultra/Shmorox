@@ -24,6 +24,7 @@ import { isCampaignPipelineControllerActive } from "@/lib/campaign-pipeline-cont
 import { isPipelineActive } from "@/lib/pipeline-state";
 import { PostTextPreview } from "@/components/PostTextPreview";
 import { formatPostTextForApi } from "@/lib/ad/caption-generator";
+import { adsNeedLayoutRerender } from "@/lib/ad/ad-card-layout-version";
 import { shouldSkipAdCardRerender } from "@/lib/pipeline-resume";
 import { getFullPostForPlatform } from "@/lib/post-package";
 import { isPersonalBrandCampaign } from "@/lib/knowledge/personal-brand";
@@ -105,7 +106,7 @@ export default function CampaignDetailPage() {
     if (!campaign || imagesRegenerating.current) return;
     if (isPersonalBrandCampaign(campaign.contentPillar, campaign.contentMode)) return;
     if (campaign.ads.length === 0) return;
-    if (campaign.ads.every((ad) => ad.imageDataUrl)) return;
+    if (!adsNeedLayoutRerender(campaign.ads)) return;
     if (isPipelineActive(campaign.id) || isCampaignPipelineControllerActive(campaign.id)) return;
     if (
       campaign.status === "running" &&
@@ -117,7 +118,6 @@ export default function CampaignDetailPage() {
 
     imagesRegenerating.current = true;
     setRenderingAds(true);
-    const skipRerender = shouldSkipAdCardRerender(campaign, getResult);
     const includeQR =
       Boolean(campaign.qrUrl) &&
       QR_AD_PHASES.includes(campaign.phase as (typeof QR_AD_PHASES)[number]);
@@ -128,7 +128,7 @@ export default function CampaignDetailPage() {
       const { renderAllAds } = await import("@/lib/ad/image-renderer");
 
       let ads = await hydrateCampaignAdImages(campaign.id, campaign.ads);
-      if (!skipRerender && ads.some((ad) => !ad.imageDataUrl)) {
+      if (adsNeedLayoutRerender(ads)) {
         ads = await renderAllAds(ads, includeQR, qrUrl, { campaignId: campaign.id });
       }
       updateCampaign(campaign.id, { ads });

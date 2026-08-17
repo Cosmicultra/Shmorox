@@ -201,10 +201,16 @@ export function buildLayoutSpecFromAd(ad: GeneratedAd): AdLayoutSpec {
   };
 }
 
+/** Base64 panel artwork can be megabytes — fingerprint it instead of hashing it whole. */
+function fingerprintPanelImage(url?: string): string | undefined {
+  if (!url) return undefined;
+  return djb2Hash(`${url.length}:${url.slice(0, 64)}:${url.slice(-64)}`);
+}
+
 export function computeContentHash(
   content: AdCreativeContent,
   layout: AdLayoutSpec,
-  meta?: { layoutStyle?: string; canvasStyle?: string }
+  meta?: { layoutStyle?: string; canvasStyle?: string; panelImageUrl?: string }
 ): string {
   const payload = JSON.stringify({
     headline: content.headline,
@@ -218,6 +224,7 @@ export function computeContentHash(
     pillar: layout.contentPillarId,
     layoutStyle: meta?.layoutStyle,
     canvasStyle: meta?.canvasStyle,
+    panelImage: fingerprintPanelImage(meta?.panelImageUrl),
   });
   return djb2Hash(payload);
 }
@@ -239,6 +246,7 @@ export function enrichGeneratedAd(ad: GeneratedAd): GeneratedAd {
   const contentHash = computeContentHash(content, layout, {
     layoutStyle: enriched.layoutStyle,
     canvasStyle: enriched.canvasStyle,
+    panelImageUrl: enriched.panelImageUrl,
   });
 
   return {

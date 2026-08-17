@@ -76,6 +76,7 @@ const SCREEN_ANCHORS: Record<AdTemplateId, Partial<Record<AspectRatio, ScreenAnc
     "1:1": { top: "13%", left: "9%", width: "42%", rotateY: -5, rotateX: 1, scale: 0.94 },
     "9:16": { top: "10%", left: "14%", width: "62%", rotateY: -4, rotateX: 1, scale: 0.92 },
   },
+  "split-ai-panel": {},
   "diagonal-growth": {},
   "text-focused": {},
 };
@@ -199,6 +200,8 @@ export function getScreenshotForTemplate(
   aspectRatio: AspectRatio = "1:1"
 ): ScreenInsetSpec | null {
   const template = AD_TEMPLATE_REGISTRY[templateId];
+  if (template.visual.aiPanel) return null;
+
   const pillar = pillarId ?? template.visual.screenshotPillar;
   const shot = getPrimaryScreenshotForPillar(pillar);
   if (!shot) return null;

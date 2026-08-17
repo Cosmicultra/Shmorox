@@ -178,7 +178,7 @@ export async function hydrateCampaignAdImages(
         layoutVersion: AD_CARD_LAYOUT_VERSION,
         assetPackVersion: ASSET_PACK_VERSION,
       });
-      if (!cached) return ad;
+      if (!cached || cached.layoutVersion !== AD_CARD_LAYOUT_VERSION) return ad;
 
       return {
         ...ad,

@@ -38,6 +38,7 @@ function pickRicherAds(local: CampaignRun, remote: CampaignRun) {
         ...ad,
         imageDataUrl: ad.imageDataUrl || remoteAd.imageDataUrl,
         creativeAssetUrl: ad.creativeAssetUrl || remoteAd.creativeAssetUrl,
+        panelImageUrl: ad.panelImageUrl || remoteAd.panelImageUrl,
         renderedLayoutVersion: ad.renderedLayoutVersion ?? remoteAd.renderedLayoutVersion,
       };
     });
@@ -52,6 +53,7 @@ function pickRicherAds(local: CampaignRun, remote: CampaignRun) {
         ...ad,
         imageDataUrl: ad.imageDataUrl || localAd.imageDataUrl,
         creativeAssetUrl: ad.creativeAssetUrl || localAd.creativeAssetUrl,
+        panelImageUrl: ad.panelImageUrl || localAd.panelImageUrl,
         renderedLayoutVersion: ad.renderedLayoutVersion ?? localAd.renderedLayoutVersion,
       };
     });
@@ -84,6 +86,7 @@ export function mergeRemoteCampaign(local: CampaignRun, remote: CampaignRun): Ca
         : remote.progressMessage ?? local.progressMessage,
     masterImageUrl: local.masterImageUrl || remote.masterImageUrl,
     adaptedImages: local.adaptedImages ?? remote.adaptedImages,
+    panelImages: local.panelImages ?? remote.panelImages,
     // Keep richer local creative checkpoint if remote is behind on ads/phase.
     creativePipelineStep:
       preferLocalPhase || adProgressScore(local) > adProgressScore(remote)

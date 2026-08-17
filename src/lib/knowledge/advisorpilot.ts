@@ -1,4 +1,8 @@
-import { ADVISORPILOT_DEMO_URL, ADVISORPILOT_POST_LINK_LABEL } from "./constants";
+import {
+  ADVISORPILOT_AD_CARD_TRIAL_CTA,
+  ADVISORPILOT_DEMO_URL,
+  ADVISORPILOT_POST_LINK_LABEL,
+} from "./constants";
 
 export interface WorkflowStep {
   title: string;
@@ -27,6 +31,7 @@ export interface AdvisorPilotKnowledge {
   websiteUrl: string;
   demoUrl: string;
   postLinkLabel: string;
+  adCardTrialCta: string;
   voice: string[];
   valueProps: string[];
   approvedPhrases: string[];
@@ -54,6 +59,7 @@ export const ADVISORPILOT_KNOWLEDGE: AdvisorPilotKnowledge = {
   websiteUrl: "https://www.advisorpilot.ai/",
   demoUrl: ADVISORPILOT_DEMO_URL,
   postLinkLabel: ADVISORPILOT_POST_LINK_LABEL,
+  adCardTrialCta: ADVISORPILOT_AD_CARD_TRIAL_CTA,
   voice: [
     "Professional and fiduciary-aware",
     "Workflow-focused, not hype-driven",

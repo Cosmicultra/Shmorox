@@ -53,6 +53,25 @@ export function explorationAlreadyComplete(checkpoint: CreativePipelineCheckpoin
   return gateApproved === true || hasParsedScores || topScore > 0;
 }
 
+/**
+ * Panel artwork is stripped from the persisted campaign row, so rebuild the map
+ * from the ads that carry it rather than paying to regenerate on resume.
+ */
+function resolvePanelImages(
+  campaign: CampaignRun
+): CreativePipelineCheckpoint["panelImages"] {
+  const fromCampaign = Object.entries(campaign.panelImages ?? {}).filter(([, url]) =>
+    Boolean(url)
+  );
+  if (fromCampaign.length) return Object.fromEntries(fromCampaign);
+
+  const fromAds = campaign.ads
+    .filter((ad) => Boolean(ad.panelImageUrl))
+    .map((ad) => [ad.aspectRatio, ad.panelImageUrl] as const);
+
+  return fromAds.length ? Object.fromEntries(fromAds) : undefined;
+}
+
 export function checkpointFromCampaign(campaign: CampaignRun): CreativePipelineCheckpoint {
   return {
     step: normalizeResumeStep(campaign.creativePipelineStep ?? "pending"),
@@ -69,6 +88,7 @@ export function checkpointFromCampaign(campaign: CampaignRun): CreativePipelineC
     selectionRationale: campaign.selectionRationale,
     masterImageUrl: campaign.masterImageUrl,
     adaptedImages: campaign.adaptedImages,
+    panelImages: resolvePanelImages(campaign),
     imagesBlocked: campaign.imagesBlocked,
     creativeJob: campaign.creativeJob,
     generationCost: campaign.generationCost,
@@ -92,6 +112,7 @@ export function campaignPatchFromCheckpoint(
     selectionRationale: checkpoint.selectionRationale,
     masterImageUrl: checkpoint.masterImageUrl,
     adaptedImages: checkpoint.adaptedImages,
+    panelImages: checkpoint.panelImages,
     imagesBlocked: checkpoint.imagesBlocked,
     creativeJob: checkpoint.creativeJob,
     generationCost: checkpoint.generationCost,

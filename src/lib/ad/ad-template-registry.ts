@@ -7,6 +7,7 @@ export type AdTemplateId =
   | "split-clarity"
   | "split-office"
   | "split-monitor"
+  | "split-ai-panel"
   | "diagonal-growth"
   | "text-focused";
 
@@ -40,6 +41,8 @@ export interface AdTemplateVisual {
   backgroundCrop: BackgroundCrop;
   screenshotPillar: string;
   useRadiatingLines?: boolean;
+  /** Graphic panel is an AI image generated per campaign, not a static asset. */
+  aiPanel?: boolean;
 }
 
 export interface AdTemplateDefinition {
@@ -154,6 +157,31 @@ export const AD_TEMPLATE_REGISTRY: Record<AdTemplateId, AdTemplateDefinition> = 
     },
     canvasStyle: "gradient",
   },
+  "split-ai-panel": {
+    id: "split-ai-panel",
+    archetype: "human-product",
+    layoutVariant: "split-office",
+    aspectRatios: ["1:1", "9:16"],
+    copySchema: {
+      maxHeadlineChars: 85,
+      maxSubheadChars: 90,
+      proofType: "steps",
+      accentBar: false,
+      showSupportingLine: false,
+      maxStepDescChars: 48,
+    },
+    visual: {
+      mode: "split",
+      backgroundCrop: "full",
+      screenshotPillar: "portfolio-narrative",
+      aiPanel: true,
+    },
+    platformOverrides: {
+      instagram: { headlineScale: 0.93 },
+      x: { qrSize: 140 },
+    },
+    canvasStyle: "gradient",
+  },
   "diagonal-growth": {
     id: "diagonal-growth",
     archetype: "executive-statement",
@@ -213,7 +241,7 @@ export const PILLAR_TEMPLATE_MAP: Record<string, AdTemplateId> = {
   "operational-scale": "diagonal-growth",
   "compliance-posture": "split-monitor",
   "company-launch": "split-dashboard",
-  "custom-request": "split-office",
+  "custom-request": "split-ai-panel",
 };
 
 const ARCHETYPE_TEMPLATE_FALLBACK: Partial<Record<LayoutArchetypeId, AdTemplateId>> = {
@@ -257,6 +285,10 @@ export function resolveTemplateFromArchetype(
     ? ARCHETYPE_TEMPLATE_FALLBACK[archetype as LayoutArchetypeId]
     : undefined;
   return AD_TEMPLATE_REGISTRY[fallback ?? "split-office"];
+}
+
+export function usesAiPanel(templateId: AdTemplateId): boolean {
+  return AD_TEMPLATE_REGISTRY[templateId].visual.aiPanel === true;
 }
 
 export function getLayoutVariantForPillar(pillarId?: string): LayoutVariant {
