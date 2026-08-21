@@ -69,8 +69,11 @@ export default function CampaignDetailPage() {
     getResult,
     campaignsLoaded,
     campaigns,
+    getSaveError,
+    retrySave,
   } = useApp();
   const campaign = getCampaign(id);
+  const saveError = getSaveError(id);
   const [progress, setProgress] = useState("");
   const [posting, setPosting] = useState<SocialPlatform | null>(null);
   const [expandedFix, setExpandedFix] = useState<number | null>(null);
@@ -317,6 +320,30 @@ export default function CampaignDetailPage() {
           <Badge variant="blue">{campaign.phase.replace(/_/g, " ")}</Badge>
         </div>
       </div>
+
+      {saveError && (
+        <Card className="border-danger/30 bg-danger/5 p-6">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-primary">Changes are not saved</p>
+              <p className="mt-1 text-sm text-secondary">
+                This campaign could not be written to your account, so anything generated since the
+                last successful save will be lost if you reload.
+              </p>
+              <p className="mt-2 break-words font-mono text-xs text-secondary">{saveError}</p>
+              <Button
+                variant="secondary"
+                className="mt-4"
+                onClick={() => retrySave(id)}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Retry save
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card className={isRunning ? "ring-2 ring-accent/20" : ""}>
         <div className="p-6">

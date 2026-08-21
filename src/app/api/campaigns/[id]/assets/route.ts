@@ -12,6 +12,17 @@ function dataUrlToBuffer(dataUrl: string): Buffer {
   return Buffer.from(base64, "base64");
 }
 
+/**
+ * A declared asset type that reaches here has no validation case, which would
+ * silently 400 every upload of that type. Typed as `never` so adding a variant
+ * to CampaignAssetUpload without handling it fails the build instead.
+ */
+function rejectUnhandledAssetType(asset: never): false {
+  const type = (asset as { type?: unknown })?.type;
+  console.warn(`[campaign-assets] rejected unknown asset type: ${String(type)}`);
+  return false;
+}
+
 function isValidAsset(value: unknown): value is CampaignAssetUpload {
   if (!value || typeof value !== "object") return false;
   const asset = value as CampaignAssetUpload;
@@ -21,12 +32,14 @@ function isValidAsset(value: unknown): value is CampaignAssetUpload {
     case "master":
       return true;
     case "adapted":
+    case "panel":
       return typeof asset.aspect === "string";
     case "ad":
     case "ad-creative":
+    case "ad-panel":
       return typeof asset.adId === "string" && asset.adId.length > 0;
     default:
-      return false;
+      return rejectUnhandledAssetType(asset);
   }
 }
 

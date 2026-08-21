@@ -44,6 +44,10 @@ interface AppState {
   deleteCampaign: (id: string) => void;
   getCampaign: (id: string) => CampaignRun | undefined;
   hydrateCampaign: (id: string) => Promise<void>;
+  /** Message from the last failed save, until a later save for that campaign succeeds. */
+  getSaveError: (id: string) => string | undefined;
+  /** Re-run a failed save immediately instead of waiting for the next edit. */
+  retrySave: (id: string) => void;
   /** Start campaign generation in the background — safe to navigate away. */
   launchCampaignPipeline: (campaignId: string) => void;
   setSocialConnection: (connection: SocialConnection) => void;
@@ -83,6 +87,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [socialConnections, setSocialConnections] = useState<SocialConnection[]>([]);
   const [storageReady, setStorageReady] = useState(false);
   const [campaignsLoaded, setCampaignsLoaded] = useState(false);
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const reviewsRef = useRef(reviews);
   const resultsRef = useRef(results);
@@ -118,26 +123,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return next;
   }, []);
 
-  const flushCampaignSave = useCallback(async (id: string) => {
-    // Keep writing until no newer local revision appeared mid-upload.
-    for (;;) {
-      const campaign = campaignsRef.current.find((c) => c.id === id);
-      if (!campaign) return;
-
-      const revision = campaignRevisionRef.current.get(id) ?? 0;
-      const isNew = newCampaignIdsRef.current.has(id);
-
-      savingIdsRef.current.add(id);
-      try {
-        await persistCampaign(campaign, isNew);
-        if (isNew) newCampaignIdsRef.current.delete(id);
-      } finally {
-        savingIdsRef.current.delete(id);
-      }
-
-      if ((campaignRevisionRef.current.get(id) ?? 0) === revision) return;
-    }
+  const clearSaveError = useCallback((id: string) => {
+    setSaveErrors((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }, []);
+
+  const flushCampaignSave = useCallback(
+    async (id: string) => {
+      // Keep writing until no newer local revision appeared mid-upload.
+      for (;;) {
+        const campaign = campaignsRef.current.find((c) => c.id === id);
+        if (!campaign) return;
+
+        const revision = campaignRevisionRef.current.get(id) ?? 0;
+        const isNew = newCampaignIdsRef.current.has(id);
+
+        savingIdsRef.current.add(id);
+        try {
+          await persistCampaign(campaign, isNew);
+          if (isNew) newCampaignIdsRef.current.delete(id);
+          clearSaveError(id);
+        } finally {
+          savingIdsRef.current.delete(id);
+        }
+
+        if ((campaignRevisionRef.current.get(id) ?? 0) === revision) return;
+      }
+    },
+    [clearSaveError]
+  );
 
   const enqueueCampaignSave = useCallback(
     (id: string) => {
@@ -147,8 +165,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           /* prior failure must not break the chain */
         })
         .then(() => flushCampaignSave(id))
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error("Campaign save failed:", err);
+          const message =
+            err instanceof Error ? err.message : "Campaign save failed unexpectedly.";
+          setSaveErrors((prevErrors) => ({ ...prevErrors, [id]: message }));
         });
       saveChainRef.current.set(id, next);
     },
@@ -364,6 +385,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     campaignRevisionRef.current.delete(id);
     savingIdsRef.current.delete(id);
     saveChainRef.current.delete(id);
+    clearSaveError(id);
 
     if (linkedReviewId) {
       setReviews((reviews) => reviews.filter((r) => r.id !== linkedReviewId));
@@ -379,9 +401,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("Campaign delete failed:", err);
     }
-  }, []);
+  }, [clearSaveError]);
 
   const getCampaign = useCallback((id: string) => campaigns.find((c) => c.id === id), [campaigns]);
+
+  const getSaveError = useCallback((id: string) => saveErrors[id], [saveErrors]);
+
+  const retrySave = useCallback(
+    (id: string) => {
+      clearSaveError(id);
+      bumpCampaignRevision(id);
+      enqueueCampaignSave(id);
+    },
+    [bumpCampaignRevision, clearSaveError, enqueueCampaignSave]
+  );
 
   const hydrateCampaign = useCallback(
     async (id: string) => {
@@ -455,6 +488,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteCampaign,
       getCampaign,
       hydrateCampaign,
+      getSaveError,
+      retrySave,
       launchCampaignPipeline,
       setSocialConnection,
       getSocialConnection,
@@ -477,6 +512,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteCampaign,
       getCampaign,
       hydrateCampaign,
+      getSaveError,
+      retrySave,
       launchCampaignPipeline,
       setSocialConnection,
       getSocialConnection,

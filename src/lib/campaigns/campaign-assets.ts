@@ -4,6 +4,8 @@ import { isDataUrl } from "./strip-images";
 export type CampaignAssetUpload =
   | { type: "master"; dataUrl: string }
   | { type: "adapted"; aspect: AspectRatio; dataUrl: string }
+  /** Campaign-level generated panel artwork, keyed by aspect (a generation checkpoint). */
+  | { type: "panel"; aspect: AspectRatio; dataUrl: string }
   | { type: "ad"; adId: string; dataUrl: string }
   | { type: "ad-creative"; adId: string; dataUrl: string }
   | { type: "ad-panel"; adId: string; dataUrl: string };
@@ -29,6 +31,11 @@ export function adPanelImagePath(userId: string, campaignId: string, adId: strin
   return `${userId}/${campaignId}/ads/${adId}-panel.png`;
 }
 
+export function panelImagePath(userId: string, campaignId: string, aspect: AspectRatio): string {
+  const slug = aspect.replace(":", "-");
+  return `${userId}/${campaignId}/panels/${slug}.png`;
+}
+
 export function assetStoragePath(
   userId: string,
   campaignId: string,
@@ -39,6 +46,8 @@ export function assetStoragePath(
       return masterImagePath(userId, campaignId);
     case "adapted":
       return adaptedImagePath(userId, campaignId, asset.aspect);
+    case "panel":
+      return panelImagePath(userId, campaignId, asset.aspect);
     case "ad":
       return adImagePath(userId, campaignId, asset.adId);
     case "ad-creative":
@@ -60,6 +69,16 @@ export function collectCampaignImageAssets(campaign: CampaignRun): CampaignAsset
     for (const [aspect, url] of Object.entries(campaign.adaptedImages) as [AspectRatio, string][]) {
       if (isDataUrl(url)) {
         assets.push({ type: "adapted", aspect, dataUrl: url });
+      }
+    }
+  }
+
+  // Checkpoints save panel artwork before any ad exists to carry it, so the
+  // campaign-level map needs its own home in Storage or a resume regenerates it.
+  if (campaign.panelImages) {
+    for (const [aspect, url] of Object.entries(campaign.panelImages) as [AspectRatio, string][]) {
+      if (isDataUrl(url)) {
+        assets.push({ type: "panel", aspect, dataUrl: url });
       }
     }
   }

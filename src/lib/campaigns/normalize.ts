@@ -64,6 +64,7 @@ export function normalizeCampaign(raw: Partial<CampaignRun> & { id: string }): C
     imagesBlocked: raw.imagesBlocked,
     creativePipelineStep: raw.creativePipelineStep,
     adaptedImages: raw.adaptedImages,
+    panelImages: raw.panelImages,
     selectionRationale: raw.selectionRationale,
     createdAt: raw.createdAt ?? new Date().toISOString(),
     completedAt: raw.completedAt,

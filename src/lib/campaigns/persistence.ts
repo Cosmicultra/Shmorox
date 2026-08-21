@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { SOCIAL_PLATFORMS } from "@/lib/types";
 import type { AspectRatio, CampaignRun, GeneratedAd } from "@/lib/types";
 import {
   adCreativeImagePath,
@@ -6,6 +7,7 @@ import {
   adPanelImagePath,
   adaptedImagePath,
   masterImagePath,
+  panelImagePath,
 } from "@/lib/campaigns/campaign-assets";
 import { isDataUrl, stripCampaignImages } from "@/lib/campaigns/strip-images";
 
@@ -23,6 +25,16 @@ async function bufferToDataUrl(buffer: Buffer, mime = "image/png"): Promise<stri
 
 export function campaignStoragePrefix(userId: string, campaignId: string): string {
   return `${userId}/${campaignId}`;
+}
+
+function requiredAspectRatios(campaign: CampaignRun): AspectRatio[] {
+  const ratios = new Set<AspectRatio>();
+  for (const platform of campaign.platforms) {
+    const config = SOCIAL_PLATFORMS.find((p) => p.id === platform);
+    if (!config) continue;
+    for (const ratio of config.aspectRatios) ratios.add(ratio);
+  }
+  return [...ratios];
 }
 
 async function uploadIfDataUrl(
@@ -65,6 +77,14 @@ export async function uploadCampaignImages(
     for (const [aspect, url] of Object.entries(campaign.adaptedImages) as [AspectRatio, string][]) {
       if (isDataUrl(url)) {
         await uploadIfDataUrl(supabase, url, adaptedImagePath(userId, campaign.id, aspect));
+      }
+    }
+  }
+
+  if (campaign.panelImages) {
+    for (const [aspect, url] of Object.entries(campaign.panelImages) as [AspectRatio, string][]) {
+      if (isDataUrl(url)) {
+        await uploadIfDataUrl(supabase, url, panelImagePath(userId, campaign.id, aspect));
       }
     }
   }
@@ -163,6 +183,25 @@ export async function hydrateCampaignImages(
     adaptedImages = next;
   }
 
+  // Stripping sets each value to undefined and JSON.stringify drops those keys,
+  // so a campaign that had panel artwork stores `{}`. Probe the aspect ratios the
+  // campaign needs rather than the keys that survived.
+  let panelImages = campaign.panelImages;
+  if (panelImages) {
+    const next: Partial<Record<AspectRatio, string>> = { ...panelImages };
+    for (const aspect of requiredAspectRatios(campaign)) {
+      const current = next[aspect];
+      if (!current || isDataUrl(current)) {
+        const stored = await downloadAsDataUrl(
+          supabase,
+          panelImagePath(userId, campaign.id, aspect)
+        );
+        if (stored) next[aspect] = stored;
+      }
+    }
+    panelImages = next;
+  }
+
   const ads = includeAds
     ? await Promise.all(
         campaign.ads.map((ad) => hydrateAdImages(supabase, userId, campaign.id, ad))
@@ -173,6 +212,7 @@ export async function hydrateCampaignImages(
     ...campaign,
     masterImageUrl,
     adaptedImages,
+    panelImages,
     ads,
   };
 }

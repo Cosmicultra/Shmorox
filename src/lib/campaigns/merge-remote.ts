@@ -1,4 +1,4 @@
-import type { CampaignRun, CampaignStatus, PipelinePhase } from "@/lib/types";
+import type { AspectRatio, CampaignRun, CampaignStatus, PipelinePhase } from "@/lib/types";
 
 const STATUS_RANK: Record<CampaignStatus, number> = {
   draft: 0,
@@ -18,6 +18,25 @@ const PHASE_RANK: Record<PipelinePhase, number> = {
   posted: 6,
   failed: 0,
 };
+
+/**
+ * Merge per aspect rather than picking one side. Stripping empties the local map
+ * to `{}`, which is truthy, so a whole-object preference would discard artwork
+ * the server just rehydrated.
+ */
+function mergeImageMaps(
+  local: Partial<Record<AspectRatio, string>> | undefined,
+  remote: Partial<Record<AspectRatio, string>> | undefined
+): Partial<Record<AspectRatio, string>> | undefined {
+  if (!local) return remote;
+  if (!remote) return local;
+
+  const merged: Partial<Record<AspectRatio, string>> = { ...remote };
+  for (const [aspect, url] of Object.entries(local) as [AspectRatio, string | undefined][]) {
+    if (url) merged[aspect] = url;
+  }
+  return merged;
+}
 
 function adProgressScore(campaign: CampaignRun): number {
   if (campaign.ads.length === 0) return 0;
@@ -86,7 +105,7 @@ export function mergeRemoteCampaign(local: CampaignRun, remote: CampaignRun): Ca
         : remote.progressMessage ?? local.progressMessage,
     masterImageUrl: local.masterImageUrl || remote.masterImageUrl,
     adaptedImages: local.adaptedImages ?? remote.adaptedImages,
-    panelImages: local.panelImages ?? remote.panelImages,
+    panelImages: mergeImageMaps(local.panelImages, remote.panelImages),
     // Keep richer local creative checkpoint if remote is behind on ads/phase.
     creativePipelineStep:
       preferLocalPhase || adProgressScore(local) > adProgressScore(remote)
